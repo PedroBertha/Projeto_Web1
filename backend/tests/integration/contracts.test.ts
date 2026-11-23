@@ -1,0 +1,271 @@
+import request from 'supertest';
+import { describe, expect, it } from 'vitest';
+import { app } from '../../src/app.js';
+
+type Method = 'get' | 'post' | 'patch' | 'delete';
+type Body = Record<string, unknown> | unknown[];
+
+const projectId = '550e8400-e29b-41d4-a716-446655440000';
+const projectPath = `/api/projects/${projectId}`;
+const registration = {
+  name: 'Pedro',
+  email: 'pedro@example.com',
+  password: 'secret-password',
+};
+const credentials = {
+  email: registration.email,
+  password: registration.password,
+};
+
+interface ContractCase {
+  method: Method;
+  path: string;
+  code: string;
+  body?: Body;
+}
+
+const contracts: ContractCase[] = [
+  {
+    method: 'post',
+    path: '/api/auth/register',
+    body: registration,
+    code: 'REGISTER_NOT_IMPLEMENTED',
+  },
+  {
+    method: 'post',
+    path: '/api/auth/login',
+    body: credentials,
+    code: 'LOGIN_NOT_IMPLEMENTED',
+  },
+  { method: 'post', path: '/api/auth/logout', code: 'LOGOUT_NOT_IMPLEMENTED' },
+  { method: 'get', path: '/api/auth/me', code: 'CURRENT_USER_NOT_IMPLEMENTED' },
+  {
+    method: 'get',
+    path: '/api/projects',
+    code: 'LIST_PROJECTS_NOT_IMPLEMENTED',
+  },
+  {
+    method: 'post',
+    path: '/api/projects',
+    body: { name: 'Projeto Web' },
+    code: 'CREATE_PROJECT_NOT_IMPLEMENTED',
+  },
+  { method: 'get', path: projectPath, code: 'GET_PROJECT_NOT_IMPLEMENTED' },
+  {
+    method: 'patch',
+    path: projectPath,
+    body: { name: 'Novo nome' },
+    code: 'UPDATE_PROJECT_NOT_IMPLEMENTED',
+  },
+  {
+    method: 'delete',
+    path: projectPath,
+    code: 'DELETE_PROJECT_NOT_IMPLEMENTED',
+  },
+];
+
+describe('Contratos iniciais sem persistencia ou autenticacao', () => {
+  it.each(contracts)(
+    '$method $path retorna $code',
+    async ({ method, path, body, code }) => {
+      const response = await request(app)[method](path).send(body);
+
+      expect(response.status).toBe(501);
+      expect(response.headers['content-type']).toContain('application/json');
+      expect(response.body).toEqual({
+        error: { code, message: expect.any(String) },
+      });
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.text).not.toContain(registration.password);
+    },
+  );
+});
+
+interface InvalidBodyCase {
+  label: string;
+  body?: Body;
+}
+
+const invalidRegistrations: InvalidBodyCase[] = [
+  { label: 'corpo ausente' },
+  { label: 'corpo em array', body: [] },
+  { label: 'nome ausente', body: credentials },
+  { label: 'nome com tipo incorreto', body: { ...registration, name: 123 } },
+  { label: 'nome curto', body: { ...registration, name: 'A' } },
+  { label: 'nome somente com espacos', body: { ...registration, name: '   ' } },
+  { label: 'nome longo', body: { ...registration, name: 'A'.repeat(101) } },
+  {
+    label: 'email ausente',
+    body: { name: 'Pedro', password: registration.password },
+  },
+  { label: 'email invalido', body: { ...registration, email: 'invalid' } },
+  {
+    label: 'senha ausente',
+    body: { name: 'Pedro', email: registration.email },
+  },
+  {
+    label: 'senha com tipo incorreto',
+    body: { ...registration, password: 12345678 },
+  },
+  { label: 'senha curta', body: { ...registration, password: 'A'.repeat(7) } },
+  {
+    label: 'senha longa',
+    body: { ...registration, password: 'A'.repeat(129) },
+  },
+  { label: 'campo desconhecido', body: { ...registration, role: 'ADMIN' } },
+];
+
+describe('Validacao de cadastro', () => {
+  it.each(invalidRegistrations)(
+    'rejeita $label sem expor os dados',
+    async ({ body }) => {
+      const response = await request(app).post('/api/auth/register').send(body);
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Dados da requisição inválidos.',
+        },
+      });
+      expect(response.text).not.toContain(registration.password);
+    },
+  );
+
+  it.each([
+    { name: 'Ab', password: 'A'.repeat(8) },
+    { name: 'A'.repeat(100), password: 'A'.repeat(128) },
+  ])('aceita os limites de tamanho do cadastro', async ({ name, password }) => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({ name, email: registration.email, password });
+    expect(response.status).toBe(501);
+  });
+});
+
+describe('Validacao de login', () => {
+  const cases: InvalidBodyCase[] = [
+    { label: 'corpo ausente' },
+    { label: 'email ausente', body: { password: 'secret' } },
+    { label: 'email invalido', body: { ...credentials, email: 'invalid' } },
+    { label: 'senha ausente', body: { email: credentials.email } },
+    { label: 'senha vazia', body: { ...credentials, password: '' } },
+    {
+      label: 'senha longa',
+      body: { ...credentials, password: 'A'.repeat(129) },
+    },
+    { label: 'campo desconhecido', body: { ...credentials, remember: true } },
+  ];
+
+  it.each(cases)('rejeita $label', async ({ body }) => {
+    const response = await request(app).post('/api/auth/login').send(body);
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it.each(['A', 'A'.repeat(128), ' '])(
+    'aceita senha nao vazia sem aplicar a regra de cadastro',
+    async (password) => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ ...credentials, password });
+      expect(response.status).toBe(501);
+    },
+  );
+});
+
+describe('Validacao de projetos', () => {
+  const cases: InvalidBodyCase[] = [
+    { label: 'corpo ausente' },
+    { label: 'nome ausente', body: { description: 'Descricao' } },
+    { label: 'nome vazio', body: { name: '' } },
+    { label: 'nome somente com espacos', body: { name: '   ' } },
+    { label: 'nome longo', body: { name: 'A'.repeat(101) } },
+    { label: 'nome com tipo incorreto', body: { name: 123 } },
+    {
+      label: 'descricao longa',
+      body: { name: 'Projeto', description: 'A'.repeat(2001) },
+    },
+    { label: 'descricao nula', body: { name: 'Projeto', description: null } },
+    {
+      label: 'campo desconhecido',
+      body: { name: 'Projeto', ownerId: projectId },
+    },
+  ];
+
+  it.each(cases)('rejeita criacao com $label', async ({ body }) => {
+    const response = await request(app).post('/api/projects').send(body);
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it.each([
+    { name: 'A' },
+    { name: 'A'.repeat(100), description: 'A'.repeat(2000) },
+    { name: 'Projeto', description: '' },
+  ])('aceita criacao nos limites do contrato', async (body) => {
+    const response = await request(app).post('/api/projects').send(body);
+    expect(response.status).toBe(501);
+  });
+
+  const invalidUpdates: InvalidBodyCase[] = [
+    { label: 'corpo ausente' },
+    { label: 'corpo vazio', body: {} },
+    { label: 'nome vazio', body: { name: ' ' } },
+    { label: 'nome longo', body: { name: 'A'.repeat(101) } },
+    { label: 'descricao longa', body: { description: 'A'.repeat(2001) } },
+    { label: 'descricao nula', body: { description: null } },
+    { label: 'campo desconhecido isolado', body: { ownerId: projectId } },
+    {
+      label: 'campo desconhecido junto com campo valido',
+      body: { name: 'Projeto', ownerId: projectId },
+    },
+  ];
+
+  it.each(invalidUpdates)(
+    'rejeita atualizacao com $label',
+    async ({ body }) => {
+      const response = await request(app).patch(projectPath).send(body);
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    },
+  );
+
+  it.each([
+    { name: 'A' },
+    { description: '' },
+    { description: 'A'.repeat(2000) },
+    { name: 'A'.repeat(100), description: 'Descricao' },
+  ])('aceita atualizacao parcial valida', async (body) => {
+    const response = await request(app).patch(projectPath).send(body);
+    expect(response.status).toBe(501);
+  });
+
+  it.each<Method>(['get', 'patch', 'delete'])(
+    'rejeita UUID invalido em %s',
+    async (method) => {
+      const response = await request(app)
+        [method]('/api/projects/not-a-uuid')
+        .send({ name: 'Projeto' });
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    },
+  );
+});
+
+describe('Compatibilidade com a base HTTP', () => {
+  it('preserva o tratamento de JSON malformado em uma rota registrada', async () => {
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('Content-Type', 'application/json')
+      .send('{');
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('INVALID_JSON');
+  });
+
+  it('nao transforma caminhos desconhecidos em contratos existentes', async () => {
+    const response = await request(app).get(`${projectPath}/tasks`);
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('ROUTE_NOT_FOUND');
+  });
+});

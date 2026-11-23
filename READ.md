@@ -2,7 +2,7 @@
 
 Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma aplicação colaborativa na qual usuários criam projetos, organizam tarefas em um quadro Kanban e acompanham o trabalho de uma equipe.
 
-**Estado atual:** estrutura inicial do backend criada, com TypeScript, configuração de ferramentas, tratamento centralizado de erros e endpoint `GET /api/health`. Os módulos de negócio, autenticação, conexão com o banco, frontend e deploy ainda serão implementados. O health check verifica somente o processo HTTP, não o banco.
+**Estado atual:** base do backend e contratos HTTP de autenticação e projetos implementados, com validação de entrada e respostas `501 Not Implemented` para operações ainda não disponíveis. Não há persistência, sessões ou autenticação ativa. As regras de negócio, conexão com o banco, frontend e deploy ainda serão implementados. O endpoint `GET /api/health` retorna `200` e verifica somente o processo HTTP, não o banco.
 
 ## Funcionalidades planejadas
 
@@ -96,17 +96,27 @@ backend/
 │   ├── errors/
 │   │   └── app-error.ts
 │   ├── middlewares/
-│   │   └── error-handler.middleware.ts
+│   │   ├── error-handler.middleware.ts
+│   │   └── validation.middleware.ts
 │   └── modules/
 │       ├── auth/
+│       │   ├── auth.routes.ts
+│       │   ├── auth.controller.ts
+│       │   └── auth.schemas.ts
 │       ├── users/
 │       ├── projects/
+│       │   ├── projects.routes.ts
+│       │   ├── projects.controller.ts
+│       │   └── projects.schemas.ts
 │       ├── invitations/
 │       ├── columns/
 │       └── tasks/
 ├── tests/
-│   └── integration/
-│       └── app.test.ts
+│   ├── integration/
+│   │   ├── app.test.ts
+│   │   └── contracts.test.ts
+│   └── unit/
+│       └── schemas.test.ts
 ├── .env.example
 ├── eslint.config.js
 ├── package.json
@@ -116,7 +126,7 @@ backend/
 └── tsconfig.build.json
 ```
 
-Os diretórios de módulos, banco e migrações são inicialmente reservados com `.gitkeep`, pois o Git não versiona pastas vazias. Os arquivos de cada funcionalidade serão criados durante sua implementação, sem arquivos de negócio vazios ou operações simuladas.
+Os módulos `auth` e `projects` já possuem rotas, controllers e schemas. Os demais módulos e os diretórios de banco e migrações continuam reservados com `.gitkeep`, pois o Git não versiona pastas vazias. Services e repositories serão criados quando começarem as regras de negócio e a persistência; não há operações de sucesso simuladas.
 
 ### Responsabilidades das camadas
 
@@ -165,7 +175,87 @@ O `package-lock.json` registra as versões instaladas para reprodução com `npm
 
 ## API REST e validação
 
-Os caminhos exatos dos endpoints ainda serão definidos durante a implementação. Os recursos previstos são autenticação, projetos, membros, convites, colunas, tarefas e administração de usuários.
+Os contratos iniciais de autenticação e projetos estão registrados. Membros, convites, colunas, tarefas e administração de usuários permanecem para etapas futuras.
+
+### Endpoints disponíveis nesta etapa
+
+Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticação e projetos validam a entrada quando aplicável e retornam **`501 Not Implemented`**, com mensagem em português e o código indicado. Não criam usuários ou projetos, não verificam credenciais, não consultam existência no banco e não geram cookies de sessão. A proteção com `401` será adicionada junto da autenticação real.
+
+| Método | Caminho | Entrada | Código de erro após validação |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | Corpo: `name`, `email`, `password` | `REGISTER_NOT_IMPLEMENTED` |
+| `POST` | `/api/auth/login` | Corpo: `email`, `password` | `LOGIN_NOT_IMPLEMENTED` |
+| `POST` | `/api/auth/logout` | Sem corpo necessário | `LOGOUT_NOT_IMPLEMENTED` |
+| `GET` | `/api/auth/me` | Sem corpo | `CURRENT_USER_NOT_IMPLEMENTED` |
+| `GET` | `/api/projects` | Sem filtros implementados | `LIST_PROJECTS_NOT_IMPLEMENTED` |
+| `POST` | `/api/projects` | Corpo: `name`, `description` opcional | `CREATE_PROJECT_NOT_IMPLEMENTED` |
+| `GET` | `/api/projects/:projectId` | Parâmetro UUID | `GET_PROJECT_NOT_IMPLEMENTED` |
+| `PATCH` | `/api/projects/:projectId` | Parâmetro UUID; corpo com `name` e/ou `description` | `UPDATE_PROJECT_NOT_IMPLEMENTED` |
+| `DELETE` | `/api/projects/:projectId` | Parâmetro UUID | `DELETE_PROJECT_NOT_IMPLEMENTED` |
+| `GET` | `/api/health` | Sem corpo | Retorna `200` com `{ "status": "ok" }` |
+
+### Regras de entrada implementadas
+
+- Cadastro: nome entre 2 e 100 caracteres, e-mail válido e senha entre 8 e 128 caracteres.
+- Login: e-mail válido e senha não vazia, com até 128 caracteres; não aplica o mínimo de cadastro a uma tentativa de login.
+- Projeto: nome entre 1 e 100 caracteres e descrição opcional com até 2.000 caracteres.
+- Atualização de projeto: exige ao menos um campo permitido. `description: ""` é aceito para permitir a limpeza da descrição na implementação futura; `null` não é aceito.
+- Nomes e e-mails perdem espaços externos; e-mails são convertidos para minúsculas. Senhas e descrições não são modificadas.
+- Corpos de cadastro, login, criação e atualização rejeitam campos desconhecidos.
+- O identificador do projeto deve ser um UUID válido, sem verificação de existência nesta etapa.
+
+O middleware `validateRequest` valida corpo e parâmetros por meio dos schemas Zod e disponibiliza a entrada normalizada em `res.locals.validated`, com tipagem específica para cada controller. Falhas retornam `400` com código `VALIDATION_ERROR` e mensagem genérica, sem expor valores recebidos ou senhas.
+
+### Exemplos de requisição
+
+Com a API local em execução, as requisições abaixo demonstram os contratos. Os dados são exemplos; nenhum registro será persistido.
+
+Cadastro com entrada válida — resposta esperada: `501` com `REGISTER_NOT_IMPLEMENTED`:
+
+```bash
+curl -i http://localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Pedro","email":"pedro@example.com","password":"senha-exemplo-123"}'
+```
+
+Login com entrada válida — resposta esperada: `501` com `LOGIN_NOT_IMPLEMENTED`:
+
+```bash
+curl -i http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"pedro@example.com","password":"senha-exemplo-123"}'
+```
+
+Criação de projeto — resposta esperada: `501` com `CREATE_PROJECT_NOT_IMPLEMENTED`:
+
+```bash
+curl -i http://localhost:3000/api/projects \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Projeto Web","description":"Trabalho da disciplina"}'
+```
+
+Atualização parcial com UUID válido e descrição vazia — resposta esperada: `501` com `UPDATE_PROJECT_NOT_IMPLEMENTED`:
+
+```bash
+curl -i -X PATCH http://localhost:3000/api/projects/550e8400-e29b-41d4-a716-446655440000 \
+  -H 'Content-Type: application/json' \
+  -d '{"description":""}'
+```
+
+O UUID é apenas um exemplo de formato válido; não representa um projeto cadastrado. Um PATCH com corpo `{}` ou uma consulta a `/api/projects/not-a-uuid` retornará `400` com `VALIDATION_ERROR`.
+
+Exemplo do formato de resposta para funcionalidade pendente:
+
+```json
+{
+  "error": {
+    "code": "CREATE_PROJECT_NOT_IMPLEMENTED",
+    "message": "A criação de projetos ainda não foi implementada."
+  }
+}
+```
+
+### Métodos previstos para as funcionalidades completas
 
 | Método | Uso previsto |
 | --- | --- |
@@ -187,8 +277,11 @@ Os caminhos exatos dos endpoints ainda serão definidos durante a implementaçã
 | `404 Not Found` | Recurso não encontrado |
 | `409 Conflict` | Conflito com o estado atual, como e-mail já cadastrado ou convite pendente duplicado |
 | `500 Internal Server Error` | Falha inesperada, tratada sem expor detalhes internos ao cliente |
+| `501 Not Implemented` | Contrato registrado, mas funcionalidade ainda não implementada |
 
-A validação no servidor deverá abranger os campos recebidos, a existência dos relacionamentos e as permissões sobre cada recurso. A validação no frontend servirá como auxílio ao usuário e não substituirá a validação do backend.
+Atualmente, `200` está implementado no health check, `400` cobre validação e JSON malformado, `404` cobre caminhos inexistentes e `501` identifica os contratos pendentes. O tratamento de falhas inesperadas com `500` permanece ativo. O parser também retorna `413` para corpos acima de 100 KB. Os demais códigos serão usados conforme as funcionalidades forem implementadas.
+
+A validação atual cobre os campos recebidos e o formato dos identificadores. A existência de relacionamentos e as permissões serão verificadas quando houver persistência e autenticação. A validação no frontend servirá como auxílio ao usuário e não substituirá a validação do backend.
 
 O tratamento de erros já está centralizado no middleware da base HTTP, seguindo o formato documentado na seção de padrões do backend. Os contratos de sucesso dos módulos ainda serão definidos.
 
@@ -259,6 +352,10 @@ Referências oficiais da arquitetura proposta: [Express na Vercel](https://verce
 
 Os testes iniciais em `backend/tests/integration/app.test.ts` verificam o health check, o retorno JSON de rota inexistente e a resposta `400` para JSON malformado. Não exigem banco de dados.
 
+Os testes em `backend/tests/integration/contracts.test.ts` verificam as nove rotas com `501`, os códigos de cada operação, a ausência de cookies de sessão, os campos obrigatórios, formatos, limites de tamanho, campos desconhecidos, PATCH vazio e UUID inválido. Os testes em `backend/tests/unit/schemas.test.ts` verificam a normalização de nomes e e-mails e a preservação de senhas e descrições.
+
+Nesta etapa, foram executados com sucesso **71 testes**, além de typecheck, lint, build e verificação de formatação. A suíte não exige banco ou segredos de autenticação. Os testes HTTP usam portas locais temporárias.
+
 Estão previstos testes automatizados da API para os seguintes cenários:
 
 - Cadastro válido, dados inválidos e e-mail duplicado.
@@ -277,6 +374,7 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 - [x] Definir tema, tecnologias e funcionalidades iniciais.
 - [x] Documentar a proposta neste arquivo.
 - [x] Criar a estrutura inicial do backend em TypeScript, com configuração de ferramentas e testes da base HTTP.
+- [x] Criar e testar os contratos HTTP de autenticação e projetos, com validação e respostas `501`.
 - [ ] Estruturar o frontend em React com TypeScript.
 - [ ] Implementar o modelo de dados, as migrações e a carga de exemplo.
 - [ ] Implementar cadastro, login, logout e sessões persistentes.
@@ -308,7 +406,7 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 ## Detalhes ainda em definição
 
 - Nome definitivo e identidade visual do aplicativo.
-- Modelo detalhado do banco e contratos dos endpoints.
+- Modelo detalhado do banco, contratos de sucesso e endpoints dos módulos ainda não iniciados. Os contratos iniciais de entrada de autenticação e projetos já estão documentados.
 - Biblioteca de arrastar e soltar do frontend. No backend, foram escolhidos Zod para validação, Argon2 para senhas e Vitest com Supertest para testes.
 - Regras de exclusão e de alteração de membros com tarefas atribuídas.
 - Configuração completa das variáveis de autenticação e banco, comandos Docker e de carga de exemplo e URLs públicas. Os comandos da base HTTP já estão documentados.
