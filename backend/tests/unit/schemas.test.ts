@@ -35,7 +35,26 @@ describe('Normalizacao dos contratos', () => {
     const input = createProjectSchema.parse({
       body: { name: ' Projeto ', description: ' Descricao ' },
     });
-    expect(input.body).toEqual({ name: 'Projeto', description: ' Descricao ' });
+    expect(input.body).toEqual({
+      name: 'Projeto',
+      description: ' Descricao ',
+      collaborators: [],
+    });
+  });
+
+  it('preserva IDs numericos dos colaboradores e sua ordem', () => {
+    const input = createProjectSchema.parse({
+      body: {
+        name: 'Projeto',
+        collaborators: [3, 1, 2],
+      },
+    });
+    expect(input.body.collaborators).toEqual([3, 1, 2]);
+  });
+
+  it('permite criar projeto sem convidados e normaliza a lista para vazia', () => {
+    const input = createProjectSchema.parse({ body: { name: 'Projeto' } });
+    expect(input.body.collaborators).toEqual([]);
   });
 
   it('preserva descricao vazia para permitir sua limpeza na atualizacao', () => {

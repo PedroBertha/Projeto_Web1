@@ -208,9 +208,80 @@ describe('Validacao de projetos', () => {
     expect(response.status).toBe(501);
   });
 
+  it.each([
+    { collaborators: [] },
+    { collaborators: [1] },
+    {
+      collaborators: [1, 2, 3],
+    },
+  ])(
+    'aceita criacao com IDs de colaboradores validos: $collaborators',
+    async ({ collaborators }) => {
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Projeto', collaborators });
+      expect(response.status).toBe(501);
+      expect(response.body.error.code).toBe('CREATE_PROJECT_NOT_IMPLEMENTED');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    },
+  );
+
+  it.each([
+    { label: 'lista nula', collaborators: null },
+    { label: 'numero em vez de lista', collaborators: 1 },
+    {
+      label: 'objeto em vez de lista',
+      collaborators: { id: 1 },
+    },
+    { label: 'ID invalido', collaborators: ['invalid'] },
+    { label: 'ID vazio', collaborators: [' '] },
+    { label: 'email em vez de ID', collaborators: ['ana@example.com'] },
+    { label: 'ID como string', collaborators: ['1'] },
+    { label: 'UUID em vez de numero', collaborators: [projectId] },
+    { label: 'ID zero', collaborators: [0] },
+    { label: 'ID negativo', collaborators: [-1] },
+    { label: 'ID fracionario', collaborators: [1.5] },
+    { label: 'item nulo', collaborators: [null] },
+    { label: 'item booleano', collaborators: [true] },
+    {
+      label: 'ID fora da precisao segura',
+      collaborators: [Number.MAX_SAFE_INTEGER + 1],
+    },
+    {
+      label: 'IDs duplicados',
+      collaborators: [1, 1],
+    },
+  ])('rejeita colaboradores com $label', async ({ collaborators }) => {
+    const response = await request(app)
+      .post('/api/projects')
+      .send({ name: 'Projeto', collaborators });
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Dados da requisição inválidos.',
+      },
+    });
+  });
+
+  it('rejeita a antiga chave inviteeEmails', async () => {
+    const response = await request(app)
+      .post('/api/projects')
+      .send({
+        name: 'Projeto',
+        inviteeEmails: ['ana@example.com'],
+      });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   const invalidUpdates: InvalidBodyCase[] = [
     { label: 'corpo ausente' },
     { label: 'corpo vazio', body: {} },
+    {
+      label: 'convites na atualizacao de dados',
+      body: { name: 'Projeto', collaborators: [1] },
+    },
     { label: 'nome vazio', body: { name: ' ' } },
     { label: 'nome longo', body: { name: 'A'.repeat(101) } },
     { label: 'descricao longa', body: { description: 'A'.repeat(2001) } },

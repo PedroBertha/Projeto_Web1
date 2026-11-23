@@ -31,4 +31,4 @@ export const validateRequest = <Schema extends z.ZodType>(
     res.locals.validated = result.data;
     next();
   };
-}
+};

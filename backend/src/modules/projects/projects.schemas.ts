@@ -7,12 +7,21 @@ const projectFields = {
 
 const projectParams = z.strictObject({ projectId: z.uuid() });
 
+const collaboratorSchema = z
+  .array(z.number().int().positive())
+  .refine(
+    (ids) => new Set(ids).size === ids.length,
+    'Não repita IDs na lista de colaboradores.',
+  )
+  .default([]);
+
 export const projectIdSchema = z.object({ params: projectParams });
 
 export const createProjectSchema = z.object({
   body: z.strictObject({
     name: projectFields.name,
     description: projectFields.description.optional(),
+    collaborators: collaboratorSchema,
   }),
 });
 

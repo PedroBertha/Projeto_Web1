@@ -19,12 +19,13 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 
 - Criar, consultar, editar e excluir projetos.
 - Listar os projetos dos quais o usuário participa.
-- Convidar usuários já cadastrados pelo e-mail.
+- Convidar usuários já cadastrados pelo ID.
+- Permitir informar convidados ao criar o projeto, sem exigir integrantes adicionais. O criador será o dono, e os demais só se tornarão membros após aceitar o convite.
 - Consultar e aceitar ou recusar convites dentro do aplicativo.
 - Permitir que o dono do projeto gerencie os membros e as colunas do quadro.
 - Permitir que membros consultem o quadro e trabalhem nas tarefas do projeto.
 
-Não está previsto envio de convites por serviço de e-mail. O endereço será usado para localizar uma conta existente; o aceite ou a recusa acontecerá no aplicativo.
+Não está previsto envio de convites por serviço de e-mail. Os colaboradores serão identificados pelos IDs de suas contas; o aceite ou a recusa acontecerá no aplicativo.
 
 ### Quadro Kanban e tarefas
 
@@ -188,7 +189,7 @@ Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticaç�
 | `POST` | `/api/auth/logout` | Sem corpo necessário | `LOGOUT_NOT_IMPLEMENTED` |
 | `GET` | `/api/auth/me` | Sem corpo | `CURRENT_USER_NOT_IMPLEMENTED` |
 | `GET` | `/api/projects` | Sem filtros implementados | `LIST_PROJECTS_NOT_IMPLEMENTED` |
-| `POST` | `/api/projects` | Corpo: `name`, `description` opcional | `CREATE_PROJECT_NOT_IMPLEMENTED` |
+| `POST` | `/api/projects` | Corpo: `name`; `description` e `collaborators` opcionais | `CREATE_PROJECT_NOT_IMPLEMENTED` |
 | `GET` | `/api/projects/:projectId` | Parâmetro UUID | `GET_PROJECT_NOT_IMPLEMENTED` |
 | `PATCH` | `/api/projects/:projectId` | Parâmetro UUID; corpo com `name` e/ou `description` | `UPDATE_PROJECT_NOT_IMPLEMENTED` |
 | `DELETE` | `/api/projects/:projectId` | Parâmetro UUID | `DELETE_PROJECT_NOT_IMPLEMENTED` |
@@ -199,12 +200,16 @@ Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticaç�
 - Cadastro: nome entre 2 e 100 caracteres, e-mail válido e senha entre 8 e 128 caracteres.
 - Login: e-mail válido e senha não vazia, com até 128 caracteres; não aplica o mínimo de cadastro a uma tentativa de login.
 - Projeto: nome entre 1 e 100 caracteres e descrição opcional com até 2.000 caracteres.
+- Criação de projeto: `collaborators` é um array opcional de IDs numéricos inteiros positivos de usuários, como `[1, 2, 3]`. Omissão ou `[]` permite criar sem colaboradores adicionais; a entrada validada sempre fornece uma lista, usando `[]` quando omitida. IDs duplicados são rejeitados, assim como strings, UUIDs, zero, negativos, frações e valores fora da precisão segura de inteiros do JavaScript. Não há conversão automática de strings para números.
+- Convites só são aceitos no contrato de criação; o PATCH continua restrito a nome e descrição. O dono será obtido da sessão na implementação futura, nunca de um `ownerId` enviado pelo cliente.
 - Atualização de projeto: exige ao menos um campo permitido. `description: ""` é aceito para permitir a limpeza da descrição na implementação futura; `null` não é aceito.
 - Nomes e e-mails perdem espaços externos; e-mails são convertidos para minúsculas. Senhas e descrições não são modificadas.
 - Corpos de cadastro, login, criação e atualização rejeitam campos desconhecidos.
 - O identificador do projeto deve ser um UUID válido, sem verificação de existência nesta etapa.
 
 O middleware `validateRequest` valida corpo e parâmetros por meio dos schemas Zod e disponibiliza a entrada normalizada em `res.locals.validated`, com tipagem específica para cada controller. Falhas retornam `400` com código `VALIDATION_ERROR` e mensagem genérica, sem expor valores recebidos ou senhas.
+
+Os IDs em `collaborators` identificam os usuários selecionados para colaborar no projeto. O fluxo de aceite continua previsto: a seleção dará origem a convites pendentes dentro do aplicativo, sem envio de mensagens por serviço de e-mail. A verificação de existência das contas, a criação de convites e a associação do criador ao projeto dependem da implementação futura de autenticação e persistência. Nesta etapa, a API verifica apenas o contrato e continua retornando `501`, sem adicionar membros ou gerar convites. A antiga chave `inviteeEmails` não é aceita.
 
 ### Exemplos de requisição
 
@@ -226,13 +231,15 @@ curl -i http://localhost:3000/api/auth/login \
   -d '{"email":"pedro@example.com","password":"senha-exemplo-123"}'
 ```
 
-Criação de projeto — resposta esperada: `501` com `CREATE_PROJECT_NOT_IMPLEMENTED`:
+Criação de projeto com convidados — resposta esperada: `501` com `CREATE_PROJECT_NOT_IMPLEMENTED`:
 
 ```bash
 curl -i http://localhost:3000/api/projects \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Projeto Web","description":"Trabalho da disciplina"}'
+  -d '{"name":"Projeto Web","description":"Trabalho da disciplina","collaborators":[1,2,3]}'
 ```
+
+Para criar sem colaboradores adicionais, omita `collaborators` ou informe uma lista vazia. Os IDs acima são exemplos de formato, sem correspondência com contas reais. Usuários convidados precisarão aceitar no aplicativo antes de participar, quando o fluxo de convites estiver implementado.
 
 Atualização parcial com UUID válido e descrição vazia — resposta esperada: `501` com `UPDATE_PROJECT_NOT_IMPLEMENTED`:
 
@@ -354,7 +361,7 @@ Os testes iniciais em `backend/tests/integration/app.test.ts` verificam o health
 
 Os testes em `backend/tests/integration/contracts.test.ts` verificam as nove rotas com `501`, os códigos de cada operação, a ausência de cookies de sessão, os campos obrigatórios, formatos, limites de tamanho, campos desconhecidos, PATCH vazio e UUID inválido. Os testes em `backend/tests/unit/schemas.test.ts` verificam a normalização de nomes e e-mails e a preservação de senhas e descrições.
 
-Nesta etapa, foram executados com sucesso **71 testes**, além de typecheck, lint, build e verificação de formatação. A suíte não exige banco ou segredos de autenticação. Os testes HTTP usam portas locais temporárias.
+Os contratos também possuem testes de colaboradores opcionais, listas de IDs numéricos inválidas, IDs duplicados, rejeição de UUIDs, e-mails e da chave antiga `inviteeEmails`, e rejeição de alterações de colaboradores pelo PATCH. A suíte não exige banco ou segredos de autenticação. Os testes HTTP usam portas locais temporárias.
 
 Estão previstos testes automatizados da API para os seguintes cenários:
 
