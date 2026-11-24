@@ -9,6 +9,9 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 ### Contas e autenticação
 
 - Cadastro, login e logout de usuários.
+- Uma conta independente por pessoa, com ID numérico e e-mail único em todo o sistema.
+- O cadastro não exige projeto. A mesma conta e o mesmo login permitem participar de vários projetos.
+- A unicidade do e-mail será garantida no banco após a normalização já definida: remoção de espaços externos e conversão para minúsculas.
 - Senhas armazenadas com hash, nunca em texto puro.
 - Sessões persistidas no PostgreSQL, sem depender da memória da instância do backend.
 - Cookie de sessão com `HttpOnly`, `SameSite` e `Secure` em produção via HTTPS.
@@ -295,6 +298,26 @@ O tratamento de erros já está centralizado no middleware da base HTTP, seguind
 ## Persistência e dados de exemplo
 
 O modelo de dados deverá representar usuários, sessões, projetos, membros, convites, colunas e tarefas, com os relacionamentos necessários para aplicar as permissões e regras de negócio.
+
+### Identidade e participação em projetos
+
+A conta existe independentemente de qualquer projeto. A relação entre usuários e projetos será muitos para muitos, representada por uma entidade de participação.
+
+| Entidade prevista | Responsabilidade |
+| --- | --- |
+| `User` | Conta com ID numérico, nome, e-mail único, hash da senha e perfil global |
+| `Project` | Dados do projeto |
+| `ProjectMember` | Associação entre usuário e projeto, com papel de dono ou membro e unicidade do par usuário/projeto |
+| `Invitation` | Convite para uma conta existente, com aceite ou recusa no aplicativo |
+
+- O cadastro cria uma conta, sem associá-la obrigatoriamente a um projeto.
+- Criar um projeto associa o usuário autenticado como dono.
+- Os IDs enviados em `collaborators` identificam contas existentes que receberão convites; aceitar cria a participação no projeto.
+- Um usuário pode ser dono de um projeto e membro de outro; o papel pertence à participação em cada projeto.
+- O perfil de administrador geral pertence à conta e é separado dos papéis nos projetos.
+- Remover uma participação preserva a conta e suas outras participações. Excluir um projeto também preserva as contas dos participantes.
+
+Essas regras estão definidas para a implementação futura. Ainda não existem modelos ou restrições no banco; as rotas permanecem como contratos com resposta `501`.
 
 Serão incluídos:
 
