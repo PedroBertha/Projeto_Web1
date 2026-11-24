@@ -9,7 +9,8 @@ authRouter.post(
   '/register',
   validateRequest(registerSchema),
   controller.register,
-);
+)
+
 authRouter.post('/login', validateRequest(loginSchema), controller.login);
 authRouter.post('/logout', controller.logout);
 authRouter.get('/me', controller.me);

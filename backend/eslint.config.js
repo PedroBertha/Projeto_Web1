@@ -9,4 +9,13 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   { languageOptions: { globals: globals.node } },
   prettier,
+  {
+    rules: {
+      'padding-line-between-statements': [
+        'error',
+        { blankLine: 'always', prev: '*', next: ['function', 'if', 'block-like'] },
+        { blankLine: 'always', prev: ['function', 'if', 'block-like'], next: '*' },
+      ],
+    },
+  },
 );
