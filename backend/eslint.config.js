@@ -1,7 +1,7 @@
-import js from '@eslint/js';
-import prettier from 'eslint-config-prettier';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
+import js from '@eslint/js'
+import prettier from 'eslint-config-prettier'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   { ignores: ['dist/**', 'coverage/**', 'src/generated/**'] },
@@ -13,9 +13,17 @@ export default tseslint.config(
     rules: {
       'padding-line-between-statements': [
         'error',
-        { blankLine: 'always', prev: '*', next: ['function', 'if', 'block-like'] },
-        { blankLine: 'always', prev: ['function', 'if', 'block-like'], next: '*' },
+        {
+          blankLine: 'always',
+          prev: '*',
+          next: ['function', 'if', 'block-like'],
+        },
+        {
+          blankLine: 'always',
+          prev: ['function', 'if', 'block-like'],
+          next: '*',
+        },
       ],
     },
   },
-);
+)

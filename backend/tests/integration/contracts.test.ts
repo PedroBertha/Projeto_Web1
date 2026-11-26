@@ -1,27 +1,27 @@
-import request from 'supertest';
-import { describe, expect, it } from 'vitest';
-import { app } from '../../src/app.js';
+import request from 'supertest'
+import { describe, expect, it } from 'vitest'
+import { app } from '../../src/app.js'
 
-type Method = 'get' | 'post' | 'patch' | 'delete';
-type Body = Record<string, unknown> | unknown[];
+type Method = 'get' | 'post' | 'patch' | 'delete'
+type Body = Record<string, unknown> | unknown[]
 
-const projectId = '550e8400-e29b-41d4-a716-446655440000';
-const projectPath = `/api/projects/${projectId}`;
+const projectId = '550e8400-e29b-41d4-a716-446655440000'
+const projectPath = `/api/projects/${projectId}`
 const registration = {
   name: 'Pedro',
   email: 'pedro@example.com',
   password: 'secret-password',
-};
+}
 const credentials = {
   email: registration.email,
   password: registration.password,
-};
+}
 
 interface ContractCase {
-  method: Method;
-  path: string;
-  code: string;
-  body?: Body;
+  method: Method
+  path: string
+  code: string
+  body?: Body
 }
 
 const contracts: ContractCase[] = [
@@ -62,28 +62,28 @@ const contracts: ContractCase[] = [
     path: projectPath,
     code: 'DELETE_PROJECT_NOT_IMPLEMENTED',
   },
-];
+]
 
 describe('Contratos iniciais sem persistencia ou autenticacao', () => {
   it.each(contracts)(
     '$method $path retorna $code',
     async ({ method, path, body, code }) => {
-      const response = await request(app)[method](path).send(body);
+      const response = await request(app)[method](path).send(body)
 
-      expect(response.status).toBe(501);
-      expect(response.headers['content-type']).toContain('application/json');
+      expect(response.status).toBe(501)
+      expect(response.headers['content-type']).toContain('application/json')
       expect(response.body).toEqual({
         error: { code, message: expect.any(String) },
-      });
-      expect(response.headers['set-cookie']).toBeUndefined();
-      expect(response.text).not.toContain(registration.password);
+      })
+      expect(response.headers['set-cookie']).toBeUndefined()
+      expect(response.text).not.toContain(registration.password)
     },
-  );
-});
+  )
+})
 
 interface InvalidBodyCase {
-  label: string;
-  body?: Body;
+  label: string
+  body?: Body
 }
 
 const invalidRegistrations: InvalidBodyCase[] = [
@@ -113,24 +113,24 @@ const invalidRegistrations: InvalidBodyCase[] = [
     body: { ...registration, password: 'A'.repeat(129) },
   },
   { label: 'campo desconhecido', body: { ...registration, role: 'ADMIN' } },
-];
+]
 
 describe('Validacao de cadastro', () => {
   it.each(invalidRegistrations)(
     'rejeita $label sem expor os dados',
     async ({ body }) => {
-      const response = await request(app).post('/api/auth/register').send(body);
+      const response = await request(app).post('/api/auth/register').send(body)
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(400)
       expect(response.body).toEqual({
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Dados da requisição inválidos.',
         },
-      });
-      expect(response.text).not.toContain(registration.password);
+      })
+      expect(response.text).not.toContain(registration.password)
     },
-  );
+  )
 
   it.each([
     { name: 'Ab', password: 'A'.repeat(8) },
@@ -138,10 +138,10 @@ describe('Validacao de cadastro', () => {
   ])('aceita os limites de tamanho do cadastro', async ({ name, password }) => {
     const response = await request(app)
       .post('/api/auth/register')
-      .send({ name, email: registration.email, password });
-    expect(response.status).toBe(501);
-  });
-});
+      .send({ name, email: registration.email, password })
+    expect(response.status).toBe(501)
+  })
+})
 
 describe('Validacao de login', () => {
   const cases: InvalidBodyCase[] = [
@@ -155,24 +155,24 @@ describe('Validacao de login', () => {
       body: { ...credentials, password: 'A'.repeat(129) },
     },
     { label: 'campo desconhecido', body: { ...credentials, remember: true } },
-  ];
+  ]
 
   it.each(cases)('rejeita $label', async ({ body }) => {
-    const response = await request(app).post('/api/auth/login').send(body);
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('VALIDATION_ERROR');
-  });
+    const response = await request(app).post('/api/auth/login').send(body)
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
 
   it.each(['A', 'A'.repeat(128), ' '])(
     'aceita senha nao vazia sem aplicar a regra de cadastro',
     async (password) => {
       const response = await request(app)
         .post('/api/auth/login')
-        .send({ ...credentials, password });
-      expect(response.status).toBe(501);
+        .send({ ...credentials, password })
+      expect(response.status).toBe(501)
     },
-  );
-});
+  )
+})
 
 describe('Validacao de projetos', () => {
   const cases: InvalidBodyCase[] = [
@@ -191,22 +191,22 @@ describe('Validacao de projetos', () => {
       label: 'campo desconhecido',
       body: { name: 'Projeto', ownerId: projectId },
     },
-  ];
+  ]
 
   it.each(cases)('rejeita criacao com $label', async ({ body }) => {
-    const response = await request(app).post('/api/projects').send(body);
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('VALIDATION_ERROR');
-  });
+    const response = await request(app).post('/api/projects').send(body)
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
 
   it.each([
     { name: 'A' },
     { name: 'A'.repeat(100), description: 'A'.repeat(2000) },
     { name: 'Projeto', description: '' },
   ])('aceita criacao nos limites do contrato', async (body) => {
-    const response = await request(app).post('/api/projects').send(body);
-    expect(response.status).toBe(501);
-  });
+    const response = await request(app).post('/api/projects').send(body)
+    expect(response.status).toBe(501)
+  })
 
   it.each([
     { collaborators: [] },
@@ -219,12 +219,12 @@ describe('Validacao de projetos', () => {
     async ({ collaborators }) => {
       const response = await request(app)
         .post('/api/projects')
-        .send({ name: 'Projeto', collaborators });
-      expect(response.status).toBe(501);
-      expect(response.body.error.code).toBe('CREATE_PROJECT_NOT_IMPLEMENTED');
-      expect(response.headers['set-cookie']).toBeUndefined();
+        .send({ name: 'Projeto', collaborators })
+      expect(response.status).toBe(501)
+      expect(response.body.error.code).toBe('CREATE_PROJECT_NOT_IMPLEMENTED')
+      expect(response.headers['set-cookie']).toBeUndefined()
     },
-  );
+  )
 
   it.each([
     { label: 'lista nula', collaborators: null },
@@ -254,15 +254,15 @@ describe('Validacao de projetos', () => {
   ])('rejeita colaboradores com $label', async ({ collaborators }) => {
     const response = await request(app)
       .post('/api/projects')
-      .send({ name: 'Projeto', collaborators });
-    expect(response.status).toBe(400);
+      .send({ name: 'Projeto', collaborators })
+    expect(response.status).toBe(400)
     expect(response.body).toEqual({
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Dados da requisição inválidos.',
       },
-    });
-  });
+    })
+  })
 
   it('rejeita a antiga chave inviteeEmails', async () => {
     const response = await request(app)
@@ -270,10 +270,10 @@ describe('Validacao de projetos', () => {
       .send({
         name: 'Projeto',
         inviteeEmails: ['ana@example.com'],
-      });
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('VALIDATION_ERROR');
-  });
+      })
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
 
   const invalidUpdates: InvalidBodyCase[] = [
     { label: 'corpo ausente' },
@@ -291,16 +291,16 @@ describe('Validacao de projetos', () => {
       label: 'campo desconhecido junto com campo valido',
       body: { name: 'Projeto', ownerId: projectId },
     },
-  ];
+  ]
 
   it.each(invalidUpdates)(
     'rejeita atualizacao com $label',
     async ({ body }) => {
-      const response = await request(app).patch(projectPath).send(body);
-      expect(response.status).toBe(400);
-      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      const response = await request(app).patch(projectPath).send(body)
+      expect(response.status).toBe(400)
+      expect(response.body.error.code).toBe('VALIDATION_ERROR')
     },
-  );
+  )
 
   it.each([
     { name: 'A' },
@@ -308,35 +308,35 @@ describe('Validacao de projetos', () => {
     { description: 'A'.repeat(2000) },
     { name: 'A'.repeat(100), description: 'Descricao' },
   ])('aceita atualizacao parcial valida', async (body) => {
-    const response = await request(app).patch(projectPath).send(body);
-    expect(response.status).toBe(501);
-  });
+    const response = await request(app).patch(projectPath).send(body)
+    expect(response.status).toBe(501)
+  })
 
   it.each<Method>(['get', 'patch', 'delete'])(
     'rejeita UUID invalido em %s',
     async (method) => {
       const response = await request(app)
         [method]('/api/projects/not-a-uuid')
-        .send({ name: 'Projeto' });
-      expect(response.status).toBe(400);
-      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+        .send({ name: 'Projeto' })
+      expect(response.status).toBe(400)
+      expect(response.body.error.code).toBe('VALIDATION_ERROR')
     },
-  );
-});
+  )
+})
 
 describe('Compatibilidade com a base HTTP', () => {
   it('preserva o tratamento de JSON malformado em uma rota registrada', async () => {
     const response = await request(app)
       .post('/api/auth/register')
       .set('Content-Type', 'application/json')
-      .send('{');
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('INVALID_JSON');
-  });
+      .send('{')
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('INVALID_JSON')
+  })
 
   it('nao transforma caminhos desconhecidos em contratos existentes', async () => {
-    const response = await request(app).get(`${projectPath}/tasks`);
-    expect(response.status).toBe(404);
-    expect(response.body.error.code).toBe('ROUTE_NOT_FOUND');
-  });
-});
+    const response = await request(app).get(`${projectPath}/tasks`)
+    expect(response.status).toBe(404)
+    expect(response.body.error.code).toBe('ROUTE_NOT_FOUND')
+  })
+})

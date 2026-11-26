@@ -1,11 +1,11 @@
-import { z } from 'zod';
+import { z } from 'zod'
 
 const projectFields = {
   name: z.string().trim().min(1).max(100),
   description: z.string().max(2000),
-};
+}
 
-const projectParams = z.strictObject({ projectId: z.uuid() });
+const projectParams = z.strictObject({ projectId: z.uuid() })
 
 const collaboratorSchema = z
   .array(z.number().int().positive())
@@ -13,9 +13,9 @@ const collaboratorSchema = z
     (ids) => new Set(ids).size === ids.length,
     'Não repita IDs na lista de colaboradores.',
   )
-  .default([]);
+  .default([])
 
-export const projectIdSchema = z.object({ params: projectParams });
+export const projectIdSchema = z.object({ params: projectParams })
 
 export const createProjectSchema = z.object({
   body: z.strictObject({
@@ -23,7 +23,7 @@ export const createProjectSchema = z.object({
     description: projectFields.description.optional(),
     collaborators: collaboratorSchema,
   }),
-});
+})
 
 export const updateProjectSchema = z.object({
   params: projectParams,
@@ -34,8 +34,8 @@ export const updateProjectSchema = z.object({
       (body) => body.name !== undefined || body.description !== undefined,
       'Informe ao menos um campo.',
     ),
-});
+})
 
-export type CreateProjectInput = z.output<typeof createProjectSchema>['body'];
-export type UpdateProjectInput = z.output<typeof updateProjectSchema>['body'];
-export type ProjectParams = z.output<typeof projectIdSchema>['params'];
+export type CreateProjectInput = z.output<typeof createProjectSchema>['body']
+export type UpdateProjectInput = z.output<typeof updateProjectSchema>['body']
+export type ProjectParams = z.output<typeof projectIdSchema>['params']

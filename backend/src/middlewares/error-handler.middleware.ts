@@ -1,5 +1,5 @@
-import type { ErrorRequestHandler } from 'express';
-import { AppError } from '../errors/app-error.js';
+import type { ErrorRequestHandler } from 'express'
+import { AppError } from '../errors/app-error.js'
 
 export const errorHandler: ErrorRequestHandler = (
   error: unknown,
@@ -8,15 +8,15 @@ export const errorHandler: ErrorRequestHandler = (
   _next,
 ) => {
   if (res.headersSent) {
-    _next(error);
-    return;
+    _next(error)
+    return
   }
 
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
       error: { code: error.code, message: error.message },
-    });
-    return;
+    })
+    return
   }
 
   // Erros do parser JSON do Express sao falhas de entrada, nao do servidor.
@@ -27,8 +27,8 @@ export const errorHandler: ErrorRequestHandler = (
           code: 'INVALID_JSON',
           message: 'O corpo da requisição contém JSON inválido.',
         },
-      });
-      return;
+      })
+      return
     }
 
     if (error.type === 'entity.too.large') {
@@ -37,16 +37,16 @@ export const errorHandler: ErrorRequestHandler = (
           code: 'PAYLOAD_TOO_LARGE',
           message: 'O corpo da requisição excede o limite permitido.',
         },
-      });
-      return;
+      })
+      return
     }
   }
 
-  console.error(error);
+  console.error(error)
   res.status(500).json({
     error: {
       code: 'INTERNAL_SERVER_ERROR',
       message: 'Ocorreu um erro inesperado.',
     },
-  });
-};
+  })
+}
