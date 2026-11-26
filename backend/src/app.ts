@@ -5,6 +5,7 @@ import { errorHandler } from './middlewares/error-handler.middleware.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { columnsRouter } from './modules/columns/columns.routes.js'
 import { projectsRouter } from './modules/projects/projects.routes.js'
+import { tasksRouter } from './modules/tasks/tasks.routes.js'
 
 export const app = express()
 
@@ -19,6 +20,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/projects/:projectId/columns', columnsRouter)
+app.use('/api/projects/:projectId/tasks', tasksRouter)
 app.use('/api/projects', projectsRouter)
 
 app.use((_req, _res, next) => {
