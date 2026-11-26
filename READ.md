@@ -354,18 +354,28 @@ As regras para exclusão de colunas com tarefas, saída ou remoção de membros 
 
 ### Ambiente local
 
-Pré-requisitos da base atual: Node.js 24 ou superior e npm. O arquivo `.nvmrc` na raiz indica Node.js 24 para quem utiliza nvm.
+Pré-requisitos da base atual: Node.js 24 ou superior, npm e Docker com Docker Compose (ou um PostgreSQL próprio). O arquivo `.nvmrc` na raiz indica Node.js 24 para quem utiliza nvm.
+
+#### Banco de dados local com Docker
+
+O arquivo `docker-compose.yml` na raiz sobe um PostgreSQL 17 com as mesmas credenciais de `backend/.env.example` (usuário `postgres`, senha `postgres`, banco `project_manager`, porta `5432`). Os dados ficam no volume `postgres-data` e sobrevivem a reinícios do contêiner.
 
 Na raiz do repositório:
 
 ```bash
+docker compose up -d          # inicia o PostgreSQL em segundo plano
+docker compose ps             # aguarde o status "healthy"
 cd backend
 npm ci
 cp .env.example .env
+npm run prisma:generate       # gera o cliente em src/generated/prisma
+npm run db:deploy             # aplica a migração inicial no banco local
 npm run dev
 ```
 
-A API local fica disponível em `http://localhost:3000`, com verificação em `GET /api/health`. Essa etapa ainda não exige um PostgreSQL em execução, pois os módulos de persistência não estão conectados. O arquivo `.env` não deve ser versionado.
+Para parar o banco, use `docker compose stop`; para apagar também os dados, `docker compose down -v`. Se a porta 5432 já estiver ocupada, defina `POSTGRES_PORT` (por exemplo, `POSTGRES_PORT=5433 docker compose up -d`) e ajuste a porta em `DATABASE_URL`. Quem já tem um PostgreSQL instalado pode dispensar o Docker e apenas apontar `DATABASE_URL` para ele.
+
+A conexão do backend fica em `backend/src/database/prisma.ts`, que exporta uma instância única de `PrismaClient` com o adaptador `@prisma/adapter-pg`. Ao iniciar, `npm run dev` e `npm start` executam um `SELECT 1` e encerram com mensagem de erro se o banco não estiver acessível. A API local fica disponível em `http://localhost:3000`; `GET /api/health` continua verificando apenas o processo HTTP, sem consultar o banco. O arquivo `.env` não deve ser versionado.
 
 | Comando, dentro de `backend/` | Finalidade |
 | --- | --- |
@@ -386,7 +396,7 @@ A API local fica disponível em `http://localhost:3000`, com verificação em `G
 
 Os comandos Prisma exigem `DATABASE_URL` configurada. Validar o schema, gerar o cliente ou gerar um diff entre schema vazio e modelo não exige banco acessível. Aplicar migrações e usar o Studio exige banco acessível. O modelo `User` e a migração inicial já existem, mas não foram aplicados; os demais modelos e o script de carga de exemplo serão criados nas próximas etapas. Nenhum comando de execução da API aplica migrações automaticamente.
 
-Está prevista a inclusão de Dockerfile e Docker Compose para iniciar a aplicação e o PostgreSQL com um comando. A execução local atual usa Node.js diretamente; os comandos Docker serão documentados quando os arquivos forem criados e validados.
+O Docker Compose atual sobe apenas o PostgreSQL; a API continua rodando com Node.js diretamente. Um Dockerfile para a aplicação ainda está previsto.
 
 ### Ambiente público
 
