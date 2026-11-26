@@ -2,7 +2,7 @@
 
 Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma aplicação colaborativa na qual usuários criam projetos, organizam tarefas em um quadro Kanban e acompanham o trabalho de uma equipe.
 
-**Estado atual:** base do backend e contratos HTTP de autenticação e projetos implementados, com validação de entrada e respostas `501 Not Implemented` para operações ainda não disponíveis. Não há persistência, sessões ou autenticação ativa. As regras de negócio, conexão com o banco, frontend e deploy ainda serão implementados. O endpoint `GET /api/health` retorna `200` e verifica somente o processo HTTP, não o banco.
+**Estado atual:** base do backend e contratos HTTP de autenticação e projetos implementados, com validação de entrada e respostas `501 Not Implemented` para operações ainda não disponíveis. O modelo `User` e sua migração SQL inicial estão definidos, mas a migração não foi aplicada. Não há persistência ativa, sessões ou autenticação. As regras de negócio, conexão com o banco, frontend e deploy ainda serão implementados. O endpoint `GET /api/health` retorna `200` e verifica somente o processo HTTP, não o banco.
 
 ## Funcionalidades planejadas
 
@@ -26,7 +26,7 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 - Permitir informar convidados ao criar o projeto, sem exigir integrantes adicionais. O criador será o dono, e os demais só se tornarão membros após aceitar o convite.
 - Consultar e aceitar ou recusar convites dentro do aplicativo.
 - Permitir que o dono do projeto gerencie os membros e as colunas do quadro.
-- Permitir que membros consultem o quadro e trabalhem nas tarefas do projeto.
+- Permitir que membros consultem o quadro e trabalhem nas tarefas conforme as permissões individuais concedidas pelo dono.
 
 Não está previsto envio de convites por serviço de e-mail. Os colaboradores serão identificados pelos IDs de suas contas; o aceite ou a recusa acontecerá no aplicativo.
 
@@ -41,17 +41,17 @@ Não está previsto envio de convites por serviço de e-mail. Os colaboradores s
 
 Comentários, anexos e subtarefas não fazem parte da primeira entrega planejada.
 
-### Administração
+### Titularidade e permissões
 
-O sistema terá os perfis de usuário comum e administrador geral. O administrador poderá gerenciar contas e consultar e excluir projetos e tarefas de qualquer usuário.
+Cada usuário gerencia a própria conta por ser seu titular. Não haverá administrador geral do sistema ou perfil global `ADMIN` na conta.
 
-O papel de dono de projeto será uma permissão vinculada ao projeto, distinta do perfil de administrador geral do sistema.
+O criador terá controle total do próprio projeto. Nos projetos de terceiros, o participante terá permissões individuais concedidas pelo dono, vinculadas à sua participação naquele projeto. A tabela de participação e o conjunto de permissões serão definidos na etapa de modelagem de projetos, sem adicionar esses campos em `User`.
 
 ### Interface
 
 - Interface em português, com HTML semântico e CSS responsivo.
 - Temas claro e escuro, com persistência da preferência.
-- Telas de cadastro, login, projetos, quadro Kanban, convites e administração.
+- Telas de cadastro, login, conta, projetos, quadro Kanban, convites e gestão de membros e permissões por projeto.
 - Estados de carregamento, listas vazias e mensagens de sucesso e erro.
 - Atualização da interface a partir das respostas da API, usando `fetch` e a renderização do React.
 
@@ -91,6 +91,9 @@ backend/
 ├── prisma/
 │   ├── schema.prisma
 │   └── migrations/
+│       ├── 20261126000000_create_users/
+│       │   └── migration.sql
+│       └── migration_lock.toml
 ├── src/
 │   ├── app.ts
 │   ├── server.ts
@@ -130,7 +133,7 @@ backend/
 └── tsconfig.build.json
 ```
 
-Os módulos `auth` e `projects` já possuem rotas, controllers e schemas. Os demais módulos e os diretórios de banco e migrações continuam reservados com `.gitkeep`, pois o Git não versiona pastas vazias. Services e repositories serão criados quando começarem as regras de negócio e a persistência; não há operações de sucesso simuladas.
+Os módulos `auth` e `projects` já possuem rotas, controllers e schemas. Os demais módulos e o diretório de conexão com o banco continuam reservados com `.gitkeep`, pois o Git não versiona pastas vazias. A pasta de migrações contém o SQL inicial de usuários e o controle do provedor PostgreSQL. Services e repositories serão criados quando começarem as regras de negócio e a persistência; não há operações de sucesso simuladas.
 
 ### Responsabilidades das camadas
 
@@ -173,7 +176,7 @@ Por exemplo, o módulo de tarefas terá `tasks.routes.ts`, `tasks.controller.ts`
 | `vitest`, `supertest` | Testes e requisições HTTP contra a aplicação |
 | `eslint`, `@eslint/js`, `typescript-eslint`, `globals`, `eslint-config-prettier`, `prettier` | Análise estática e formatação |
 
-O projeto utiliza Prisma 7 com adaptador PostgreSQL. O arquivo `prisma7.config.ts` configura o endereço do banco, e `prisma/schema.prisma` está reservado para a modelagem. O cliente gerado ficará em `src/generated/prisma`, fora do versionamento. Instalar uma dependência não significa que a funcionalidade correspondente já está implementada.
+O projeto utiliza Prisma 7 com adaptador PostgreSQL. O arquivo `prisma7.config.ts` configura o endereço do banco, e `prisma/schema.prisma` define o modelo `User`. O cliente gerado fica em `src/generated/prisma`, fora do versionamento; ele pode ser recriado com `npm run prisma:generate`. Instalar uma dependência ou gerar o cliente não significa que a funcionalidade correspondente já está implementada.
 
 O `package-lock.json` registra as versões instaladas para reprodução com `npm ci`. O `package.json` também contém um override de `effect` para uma versão corrigida da série 3, pois a configuração do Prisma 7 depende de uma versão com o aviso de segurança [GHSA-7589-6fvf-x4pw](https://github.com/advisories/GHSA-7589-6fvf-x4pw). Esse override deverá ser reavaliado ao atualizar o Prisma.
 
@@ -305,25 +308,44 @@ A conta existe independentemente de qualquer projeto. A relação entre usuário
 
 | Entidade prevista | Responsabilidade |
 | --- | --- |
-| `User` | Conta com ID numérico, nome, e-mail único, hash da senha e perfil global |
+| `User` | Conta independente com ID numérico, nome, e-mail único, hash da senha e datas; modelo já definido, sem role global |
 | `Project` | Dados do projeto |
-| `ProjectMember` | Associação entre usuário e projeto, com papel de dono ou membro e unicidade do par usuário/projeto |
+| `ProjectMember` | Associação entre usuário e projeto, com titularidade, permissões individuais e unicidade do par usuário/projeto; modelagem futura |
 | `Invitation` | Convite para uma conta existente, com aceite ou recusa no aplicativo |
 
 - O cadastro cria uma conta, sem associá-la obrigatoriamente a um projeto.
 - Criar um projeto associa o usuário autenticado como dono.
 - Os IDs enviados em `collaborators` identificam contas existentes que receberão convites; aceitar cria a participação no projeto.
-- Um usuário pode ser dono de um projeto e membro de outro; o papel pertence à participação em cada projeto.
-- O perfil de administrador geral pertence à conta e é separado dos papéis nos projetos.
+- Um usuário pode ser dono de um projeto e participante de outro; suas permissões pertencem à participação em cada projeto.
+- A conta não possui role global; cada usuário gerencia sua própria conta, e o dono concede permissões individuais aos participantes de seu projeto.
 - Remover uma participação preserva a conta e suas outras participações. Excluir um projeto também preserva as contas dos participantes.
 
-Essas regras estão definidas para a implementação futura. Ainda não existem modelos ou restrições no banco; as rotas permanecem como contratos com resposta `501`.
+As regras de participação estão definidas para a implementação futura. Somente o modelo de usuários e sua migração inicial foram criados; as tabelas de projetos, participações e convites ainda serão modeladas. As rotas permanecem como contratos com resposta `501`.
+
+### Modelo de usuários e migração inicial
+
+O modelo Prisma `User` é mapeado para a tabela PostgreSQL `users`. Todos os campos abaixo são obrigatórios:
+
+| Campo Prisma | Coluna SQL | Tipo PostgreSQL | Regra |
+| --- | --- | --- | --- |
+| `id` | `id` | `SERIAL` / `INTEGER` | Chave primária autoincremental |
+| `name` | `name` | `VARCHAR(100)` | Nome do usuário |
+| `email` | `email` | `TEXT` | Índice único |
+| `passwordHash` | `password_hash` | `TEXT` | Hash da senha, nunca a senha em texto puro |
+| `createdAt` | `created_at` | `TIMESTAMPTZ(3)` | Padrão: instante da criação |
+| `updatedAt` | `updated_at` | `TIMESTAMPTZ(3)` | Padrão: instante da criação; atualizado pelo Prisma |
+
+Não existem campos `role`, `projectId` ou flag de desativação em `User`, nem enum de perfil global. A senha recebida no cadastro deverá ser transformada em hash na implementação futura. O e-mail deverá ser persistido sem espaços externos e em minúsculas, conforme o contrato de cadastro; o índice único compara os valores armazenados e não realiza essa normalização automaticamente.
+
+A migração `backend/prisma/migrations/20261126000000_create_users/migration.sql` foi gerada a partir do schema, sem conexão com um banco. O arquivo `migration_lock.toml` registra o provedor PostgreSQL. O SQL está versionável, mas **não foi aplicado** e nenhuma conta foi criada.
+
+`updatedAt` possui `@updatedAt` no Prisma e valor inicial no SQL. Não existe trigger: uma atualização feita diretamente por SQL deverá definir `updated_at` explicitamente, enquanto atualizações via Prisma serão gerenciadas pelo cliente.
 
 Serão incluídos:
 
 - Migrações SQL versionadas para criação e evolução das tabelas.
 - Script de carga de dados de exemplo para a demonstração.
-- Dados que permitam demonstrar usuário comum, administrador, colaboração e tarefas em diferentes colunas.
+- Dados que permitam demonstrar contas, dono de projeto, participantes com permissões individuais e tarefas em diferentes colunas.
 - Orientações de configuração das variáveis de ambiente, sem versionar segredos.
 
 As regras para exclusão de colunas com tarefas, saída ou remoção de membros e tratamento de suas tarefas serão definidas antes da implementação desses fluxos.
@@ -362,7 +384,7 @@ A API local fica disponível em `http://localhost:3000`, com verificação em `G
 | `npm run db:deploy` | Aplicar migrações versionadas no banco de destino |
 | `npm run db:studio` | Abrir a interface de inspeção do banco |
 
-Os comandos Prisma exigem `DATABASE_URL` configurada. Migrações e Studio também exigem banco acessível. Ainda não existem modelos, migrações ou script de carga de exemplo; esses itens serão criados na etapa de modelagem.
+Os comandos Prisma exigem `DATABASE_URL` configurada. Validar o schema, gerar o cliente ou gerar um diff entre schema vazio e modelo não exige banco acessível. Aplicar migrações e usar o Studio exige banco acessível. O modelo `User` e a migração inicial já existem, mas não foram aplicados; os demais modelos e o script de carga de exemplo serão criados nas próximas etapas. Nenhum comando de execução da API aplica migrações automaticamente.
 
 Está prevista a inclusão de Dockerfile e Docker Compose para iniciar a aplicação e o PostgreSQL com um comando. A execução local atual usa Node.js diretamente; os comandos Docker serão documentados quando os arquivos forem criados e validados.
 
@@ -390,7 +412,7 @@ Estão previstos testes automatizados da API para os seguintes cenários:
 
 - Cadastro válido, dados inválidos e e-mail duplicado.
 - Login, logout e acesso sem autenticação.
-- Permissões de usuário comum, dono de projeto e administrador.
+- Titularidade da própria conta, controle do dono e permissões individuais dos participantes em cada projeto.
 - Criação, consulta, atualização e exclusão de projetos e tarefas.
 - Convites, aceite, recusa e prevenção de duplicidade pendente.
 - Atribuição de tarefa somente a membro do projeto.
@@ -405,13 +427,14 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 - [x] Documentar a proposta neste arquivo.
 - [x] Criar a estrutura inicial do backend em TypeScript, com configuração de ferramentas e testes da base HTTP.
 - [x] Criar e testar os contratos HTTP de autenticação e projetos, com validação e respostas `501`.
+- [x] Definir o modelo `User` e gerar a migração SQL inicial, sem aplicá-la ao banco.
 - [ ] Estruturar o frontend em React com TypeScript.
 - [ ] Implementar o modelo de dados, as migrações e a carga de exemplo.
 - [ ] Implementar cadastro, login, logout e sessões persistentes.
 - [ ] Implementar validação no servidor e tratamento de erros HTTP.
 - [ ] Implementar projetos, membros e convites.
 - [ ] Implementar colunas personalizáveis e tarefas no Kanban.
-- [ ] Implementar permissões e administração geral.
+- [ ] Implementar titularidade de conta e permissões individuais por participação no projeto.
 - [ ] Integrar a interface à API por `fetch`.
 - [ ] Implementar responsividade e temas claro e escuro.
 - [ ] Criar e executar os testes automatizados da API.
@@ -430,7 +453,7 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 4. Convidar outro usuário e demonstrar o aceite.
 5. Criar uma tarefa, atribuir responsável e movê-la entre colunas.
 6. Mostrar um erro de validação e um conflito tratado pela API.
-7. Demonstrar o perfil de administrador e o logout.
+7. Demonstrar as permissões concedidas pelo dono a um participante e o logout.
 8. Apresentar exemplos de testes, persistência e histórico incremental no GitHub.
 
 ## Detalhes ainda em definição

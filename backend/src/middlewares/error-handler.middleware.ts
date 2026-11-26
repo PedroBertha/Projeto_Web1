@@ -30,6 +30,7 @@ export const errorHandler: ErrorRequestHandler = (
       });
       return;
     }
+
     if (error.type === 'entity.too.large') {
       res.status(413).json({
         error: {
