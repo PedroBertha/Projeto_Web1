@@ -6,6 +6,7 @@ import { authRouter } from './modules/auth/auth.routes.js'
 import { columnsRouter } from './modules/columns/columns.routes.js'
 import { projectsRouter } from './modules/projects/projects.routes.js'
 import { tasksRouter } from './modules/tasks/tasks.routes.js'
+import { usersRouter } from './modules/users/users.routes.js'
 
 export const app = express()
 
@@ -22,6 +23,7 @@ app.use('/api/auth', authRouter)
 app.use('/api/projects/:projectId/columns', columnsRouter)
 app.use('/api/projects/:projectId/tasks', tasksRouter)
 app.use('/api/projects', projectsRouter)
+app.use('/api/users', usersRouter)
 
 app.use((_req, _res, next) => {
   next(new AppError(404, 'ROUTE_NOT_FOUND', 'Rota não encontrada.'))
