@@ -39,6 +39,16 @@ export const resendConfirmationSchema = z.object({
   body: z.strictObject({ email: emailSchema }),
 })
 
+// Retorno do Google. Ele envia outros parâmetros (scope, authuser...), que
+// são ignorados.
+export const googleCallbackSchema = z.object({
+  query: z.object({
+    code: z.string().min(1).max(2048).optional(),
+    state: z.string().min(1).max(256).optional(),
+    error: z.string().max(256).optional(),
+  }),
+})
+
 export type RegisterInput = z.output<typeof registerSchema>['body']
 export type LoginInput = z.output<typeof loginSchema>['body']
 export type ConfirmEmailInput = z.output<typeof confirmEmailSchema>['body']

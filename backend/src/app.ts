@@ -7,7 +7,7 @@ import {
 import { AppError } from './errors/app-error.js'
 import { errorHandler } from './middlewares/error-handler.middleware.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
-import type { AuthService } from './modules/auth/auth.service.js'
+import type { AuthControllerDependencies } from './modules/auth/auth.controller.js'
 import { columnsRouter } from './modules/columns/columns.routes.js'
 import {
   invitationsRouter,
@@ -18,7 +18,7 @@ import { tasksRouter } from './modules/tasks/tasks.routes.js'
 import { usersRouter } from './modules/users/users.routes.js'
 
 export interface AppDependencies {
-  authService: AuthService
+  auth: AuthControllerDependencies
   session: SessionOptions
 }
 
@@ -42,7 +42,7 @@ export function createApp(deps: AppDependencies): Express {
     res.status(200).json({ status: 'ok' })
   })
 
-  app.use('/api/auth', createAuthRouter(deps.authService))
+  app.use('/api/auth', createAuthRouter(deps.auth))
   app.use('/api/projects/:projectId/columns', columnsRouter)
   app.use('/api/projects/:projectId/tasks', tasksRouter)
   app.use('/api/projects/:projectId/invitations', projectInvitationsRouter)

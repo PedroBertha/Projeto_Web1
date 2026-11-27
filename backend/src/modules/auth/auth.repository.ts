@@ -6,7 +6,9 @@ export interface AuthUser {
   name: string
   username: string
   email: string
-  passwordHash: string
+  // null em contas criadas pelo Google, que ainda não definiram senha.
+  passwordHash: string | null
+  googleId: string | null
   avatarUrl: string | null
   emailVerifiedAt: Date | null
   createdAt: Date
@@ -17,6 +19,15 @@ export interface NewUserData {
   username: string
   email: string
   passwordHash: string
+}
+
+export interface NewGoogleUserData {
+  name: string
+  username: string
+  email: string
+  googleId: string
+  avatarUrl: string | null
+  emailVerifiedAt: Date
 }
 
 export interface NewTokenData {
@@ -35,6 +46,19 @@ export class DuplicateUserError extends Error {
 export interface AuthRepository {
   findUserByEmail(email: string): Promise<AuthUser | null>
   findUserByUsername(username: string): Promise<AuthUser | null>
+  findUserByGoogleId(googleId: string): Promise<AuthUser | null>
+  // Conta sem senha, com o e-mail já confirmado pelo Google.
+  createGoogleUser(user: NewGoogleUserData): Promise<AuthUser>
+  // Vincula o Google a uma conta existente com o mesmo e-mail. Se a conta
+  // ainda não estava confirmada, confirma o e-mail, apaga a senha e troca o
+  // nome pelo do Google: eles podem ter sido definidos por outra pessoa que
+  // cadastrou este e-mail antes.
+  linkGoogleAccount(params: {
+    userId: number
+    googleId: string
+    googleName: string
+    now: Date
+  }): Promise<AuthUser>
   // Cria a conta e o token de confirmação de e-mail na mesma transação.
   createUserWithVerificationToken(
     user: NewUserData,
@@ -57,10 +81,22 @@ const userSelect = {
   username: true,
   email: true,
   passwordHash: true,
+  googleId: true,
   avatarUrl: true,
   emailVerifiedAt: true,
   createdAt: true,
 } as const
+
+function toDuplicateError(error: unknown): unknown {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  ) {
+    return new DuplicateUserError()
+  }
+
+  return error
+}
 
 export function createPrismaAuthRepository(
   prisma: PrismaClient,
@@ -77,6 +113,54 @@ export function createPrismaAuthRepository(
       })
     },
 
+    findUserByGoogleId(googleId) {
+      return prisma.user.findUnique({
+        where: { googleId },
+        select: userSelect,
+      })
+    },
+
+    async createGoogleUser(user) {
+      try {
+        return await prisma.user.create({ data: user, select: userSelect })
+      } catch (error) {
+        throw toDuplicateError(error)
+      }
+    },
+
+    linkGoogleAccount({ userId, googleId, googleName, now }) {
+      return prisma.$transaction(async (tx) => {
+        const current = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { emailVerifiedAt: true },
+        })
+
+        if (current.emailVerifiedAt) {
+          return tx.user.update({
+            where: { id: userId },
+            data: { googleId },
+            select: userSelect,
+          })
+        }
+
+        await tx.userToken.updateMany({
+          where: { userId, type: 'EMAIL_VERIFICATION', usedAt: null },
+          data: { usedAt: now },
+        })
+
+        return tx.user.update({
+          where: { id: userId },
+          data: {
+            googleId,
+            name: googleName,
+            emailVerifiedAt: now,
+            passwordHash: null,
+          },
+          select: userSelect,
+        })
+      })
+    },
+
     async createUserWithVerificationToken(user, token) {
       try {
         return await prisma.user.create({
@@ -87,14 +171,7 @@ export function createPrismaAuthRepository(
           select: userSelect,
         })
       } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          throw new DuplicateUserError()
-        }
-
-        throw error
+        throw toDuplicateError(error)
       }
     },
 

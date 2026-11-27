@@ -74,7 +74,8 @@ model User {
   name              String    @db.VarChar(100)
   username          String    @unique @db.VarChar(30) // guardado em minúsculas
   email             String    @unique @db.VarChar(254) // guardado em minúsculas
-  passwordHash      String    @map("password_hash") @db.Text
+  passwordHash      String?   @map("password_hash") @db.Text // null em contas criadas pelo Google
+  googleId          String?   @unique @map("google_id") @db.VarChar(255) // "sub" da conta Google vinculada
   avatarUrl         String?   @map("avatar_url") @db.Text
   emailVerifiedAt   DateTime? @map("email_verified_at") @db.Timestamptz(3)
   passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz(3)

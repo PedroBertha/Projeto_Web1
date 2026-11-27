@@ -1,6 +1,6 @@
-# Gerenciador de Projetos e Tarefas
+# Nexo
 
-Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma aplicação colaborativa na qual usuários criam projetos, organizam tarefas em um quadro Kanban e acompanham o trabalho de uma equipe.
+O **Nexo** é um gerenciador de projetos e tarefas. Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma aplicação colaborativa na qual usuários criam projetos, organizam tarefas em um quadro Kanban e acompanham o trabalho de uma equipe.
 
 **Estado atual:** base do backend e contratos HTTP de autenticação e projetos implementados, com validação de entrada e respostas `501 Not Implemented` para operações ainda não disponíveis. O modelo `User` e sua migração SQL inicial estão definidos, mas a migração não foi aplicada. Não há persistência ativa, sessões ou autenticação. As regras de negócio, conexão com o banco, frontend e deploy ainda serão implementados. O endpoint `GET /api/health` retorna `200` e verifica somente o processo HTTP, não o banco.
 
@@ -10,6 +10,7 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 
 - Cadastro, login e logout de usuários. A conta só pode entrar na plataforma depois de confirmar o e-mail pelo link enviado no cadastro.
 - Login com e-mail ou nome de usuário, mais a senha.
+- Cadastro e login com a conta Google. A conta criada pelo Google já tem o e-mail confirmado.
 - Uma conta independente por pessoa, com ID numérico e e-mail único em todo o sistema.
 - O cadastro não exige projeto. A mesma conta e o mesmo login permitem participar de vários projetos.
 - A unicidade do e-mail será garantida no banco após a normalização já definida: remoção de espaços externos e conversão para minúsculas.
@@ -210,13 +211,42 @@ Rotas implementadas com persistência no PostgreSQL (Prisma) e sessão por cooki
 | `POST` | `/api/auth/resend-confirmation` | `email` | Sempre `202`, sem revelar se o e-mail tem conta |
 | `POST` | `/api/auth/login` | `login` (e-mail ou username), `password` | `200` com `user` e cookie. `401` com `INVALID_CREDENTIALS`; `403` com `EMAIL_NOT_VERIFIED` |
 | `POST` | `/api/auth/logout` | Sem corpo | `204`; encerra a sessão e apaga o cookie |
+| `GET` | `/api/auth/google` | Link aberto pelo navegador | `302` para o Google. `503` com `GOOGLE_LOGIN_NOT_CONFIGURED` sem as chaves |
+| `GET` | `/api/auth/google/callback` | Retorno do Google (`code`, `state`) | `302` para `APP_URL/` com o cookie de sessão, ou para `APP_URL/login?erro=<código>` |
 
 - A conta só entra na plataforma depois de confirmar o e-mail. O cadastro não cria sessão; ela é aberta na confirmação ou no login, e o login recusa contas não confirmadas com `403`.
 - O aviso de e-mail não confirmado só aparece com a senha correta. Login inexistente e senha errada recebem a mesma resposta `401`.
 - A senha é guardada com Argon2id. A resposta nunca inclui o hash.
 - O link do e-mail aponta para `APP_URL/confirmar-email?token=...`. A página do frontend envia o token por `POST`, porque leitores de e-mail podem abrir links automaticamente. O token tem 43 caracteres em base64url, vale 24 horas e é de uso único; o banco guarda apenas o SHA-256 dele em `user_tokens`. Pedir um novo link invalida os anteriores.
 - O cookie `sid` é `HttpOnly`, `SameSite=Lax`, dura 7 dias (renovados a cada requisição) e é `Secure` em produção. O id da sessão é trocado ao entrar.
-- O envio de e-mail passa pela interface `Mailer` (`src/mail/mailer.ts`). Por enquanto só existe o `ConsoleMailer`, que escreve a mensagem no terminal do servidor; um transporte SMTP pode ser ligado em `src/server.ts` sem mudar o módulo de autenticação. Se o envio falhar, a conta continua criada e o usuário pode pedir um novo link.
+- O envio de e-mail passa pela interface `Mailer` (`src/mail/mailer.ts`). Com `SMTP_HOST` e `MAIL_FROM` definidos, o `SmtpMailer` (nodemailer) envia a mensagem em texto e HTML; sem eles, o `ConsoleMailer` escreve a mensagem no terminal do servidor. Ao iniciar, o servidor testa a conexão SMTP e só avisa se ela falhar. Se um envio falhar, a conta continua criada e o usuário pode pedir um novo link.
+- O usuário devolvido inclui `hasPassword` e `googleLinked`, para o frontend saber se a conta tem senha e se está vinculada ao Google.
+
+#### Login com Google
+
+O frontend só precisa de um link ou botão para `/api/auth/google`. O backend usa o fluxo OAuth "authorization code" com PKCE e um `state` aleatório guardado na sessão (vale 10 minutos e é de uso único). No retorno, troca o código pelo perfil (`sub`, e-mail, nome e foto) e:
+
+- Se o Google já estiver vinculado a uma conta, entra nela.
+- Se já existir uma conta com o mesmo e-mail, vincula o Google a ela. Se essa conta ainda não estava confirmada, o e-mail é confirmado, a senha é apagada e o nome passa a ser o do Google, porque eles podem ter sido definidos por outra pessoa que cadastrou o e-mail antes. Os links de confirmação pendentes deixam de valer.
+- Se não existir conta, cria uma sem senha, com o e-mail confirmado, a foto do Google e um username gerado do e-mail (`pedro.silva`, ou `pedro.silva2` se já existir).
+- E-mails não verificados pelo Google são recusados (`google_email_not_verified`), assim como um e-mail já vinculado a outra conta Google (`google_account_conflict`).
+
+Os códigos de erro no `?erro=` da tela de login são: `google_cancelado`, `google_sessao_expirada`, `google_email_not_verified`, `google_account_conflict`, `google_nao_configurado` e `google_falhou`. Uma conta criada pelo Google não entra com senha até definir uma (a troca e a recuperação de senha ainda não foram implementadas).
+
+Para configurar, no [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+
+1. Crie um projeto e configure a tela de consentimento OAuth (tipo "Externo"; em modo de teste, adicione os e-mails que vão testar).
+2. Em "Credenciais", crie um "ID do cliente OAuth" do tipo "Aplicativo da Web".
+3. Em "URIs de redirecionamento autorizados", cadastre `http://localhost:3000/api/auth/google/callback` (e, no deploy, `https://SEU_DOMINIO/api/auth/google/callback`).
+4. Copie o ID e a chave secreta para `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env`. Se a URL de retorno for outra, ajuste `GOOGLE_REDIRECT_URI`.
+
+#### Envio de e-mail com Gmail
+
+1. Ative a verificação em duas etapas na conta Google que vai enviar os e-mails.
+2. Gere uma senha de app em https://myaccount.google.com/apppasswords.
+3. No `.env`: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=seu-email@gmail.com`, `SMTP_PASS=<senha de app, sem espaços>` e `MAIL_FROM="Nexo <seu-email@gmail.com>"`.
+
+Qualquer outro provedor SMTP funciona do mesmo jeito (Brevo, Outlook, ou o Mailtrap para testar sem enviar de verdade). Use `SMTP_SECURE=true` com a porta 465.
 - `GET /api/auth/me` continua retornando `501`.
 
 ### Rotas de convites
@@ -419,7 +449,7 @@ npm run dev
 
 Para parar o banco, use `docker compose stop`; para apagar também os dados, `docker compose down -v`. Se a porta 5432 já estiver ocupada, defina `POSTGRES_PORT` (por exemplo, `POSTGRES_PORT=5433 docker compose up -d`) e ajuste a porta em `DATABASE_URL`. Quem já tem um PostgreSQL instalado pode dispensar o Docker e apenas apontar `DATABASE_URL` para ele.
 
-A conexão do backend fica em `backend/src/database/prisma.ts`, que exporta uma instância única de `PrismaClient` com o adaptador `@prisma/adapter-pg`. Ao iniciar, `npm run dev` e `npm start` executam um `SELECT 1` e encerram com mensagem de erro se o banco não estiver acessível. A API local fica disponível em `http://localhost:3000`; `GET /api/health` continua verificando apenas o processo HTTP, sem consultar o banco. O arquivo `.env` não deve ser versionado. `SESSION_SECRET` precisa de ao menos 32 caracteres em produção; vazio em desenvolvimento, o servidor gera um segredo temporário e as sessões caem a cada reinício. Gere um com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `APP_URL` é o endereço do frontend usado nos links de e-mail (padrão `http://localhost:5173`).
+A conexão do backend fica em `backend/src/database/prisma.ts`, que exporta uma instância única de `PrismaClient` com o adaptador `@prisma/adapter-pg`. Ao iniciar, `npm run dev` e `npm start` executam um `SELECT 1` e encerram com mensagem de erro se o banco não estiver acessível. A API local fica disponível em `http://localhost:3000`; `GET /api/health` continua verificando apenas o processo HTTP, sem consultar o banco. O arquivo `.env` não deve ser versionado. `SESSION_SECRET` precisa de ao menos 32 caracteres em produção; vazio em desenvolvimento, o servidor gera um segredo temporário e as sessões caem a cada reinício. Gere um com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `APP_URL` é o endereço do frontend usado nos links de e-mail e no retorno do login com Google (padrão `http://localhost:5173`). As variáveis `SMTP_*`, `MAIL_FROM` e `GOOGLE_*` são opcionais; sem elas, os e-mails aparecem no terminal e o login com Google fica desativado.
 
 | Comando, dentro de `backend/` | Finalidade |
 | --- | --- |
@@ -484,7 +514,7 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 - [x] Definir o modelo `User` e gerar a migração SQL inicial, sem aplicá-la ao banco.
 - [ ] Estruturar o frontend em React com TypeScript.
 - [ ] Implementar o modelo de dados, as migrações e a carga de exemplo.
-- [x] Implementar cadastro com confirmação de e-mail, login, logout e sessões persistentes (falta `GET /api/auth/me` e a proteção das rotas privadas).
+- [x] Implementar cadastro com confirmação de e-mail (envio por SMTP), login por e-mail ou username, login com Google, logout e sessões persistentes (falta `GET /api/auth/me`, a troca e a recuperação de senha e a proteção das rotas privadas).
 - [ ] Implementar validação no servidor e tratamento de erros HTTP.
 - [ ] Implementar projetos, membros e convites.
 - [ ] Implementar colunas personalizáveis e tarefas no Kanban.

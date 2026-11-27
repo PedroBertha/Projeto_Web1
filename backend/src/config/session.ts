@@ -5,6 +5,8 @@ import session from 'express-session'
 declare module 'express-session' {
   interface SessionData {
     userId: number
+    // Dados temporários entre a ida ao Google e o retorno no callback.
+    googleOAuth: { state: string; codeVerifier: string; createdAt: number }
   }
 }
 

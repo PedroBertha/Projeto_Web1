@@ -14,6 +14,8 @@ import type {
   ResendConfirmationInput,
 } from './auth.schemas.js'
 import { generateToken, hashToken } from './auth.tokens.js'
+import type { GoogleProfile } from './google.client.js'
+import { usernameBaseFromEmail, usernameCandidates } from './username.js'
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -25,6 +27,9 @@ export interface PublicUser {
   email: string
   avatarUrl: string | null
   emailVerifiedAt: Date | null
+  // Ajuda o frontend a mostrar "definir senha" e o vínculo com o Google.
+  hasPassword: boolean
+  googleLinked: boolean
   createdAt: Date
 }
 
@@ -44,6 +49,8 @@ export function toPublicUser(user: AuthUser): PublicUser {
     email: user.email,
     avatarUrl: user.avatarUrl,
     emailVerifiedAt: user.emailVerifiedAt,
+    hasPassword: user.passwordHash !== null,
+    googleLinked: user.googleId !== null,
     createdAt: user.createdAt,
   }
 }
@@ -181,7 +188,8 @@ export function createAuthService(deps: AuthServiceDependencies) {
         ? await deps.repository.findUserByEmail(input.login)
         : await deps.repository.findUserByUsername(input.login)
 
-      if (!user) {
+      // Conta inexistente ou criada pelo Google sem senha.
+      if (!user?.passwordHash) {
         await argon2.verify(await dummyHash, input.password)
         throw invalidCredentials()
       }
@@ -203,7 +211,96 @@ export function createAuthService(deps: AuthServiceDependencies) {
 
       return toPublicUser(user)
     },
+
+    // Entra com a conta Google, criando ou vinculando a conta se preciso.
+    async loginWithGoogle(profile: GoogleProfile): Promise<PublicUser> {
+      if (!profile.emailVerified) {
+        throw new AppError(
+          403,
+          'GOOGLE_EMAIL_NOT_VERIFIED',
+          'O e-mail desta conta Google não está verificado.',
+        )
+      }
+
+      const at = now()
+      const user =
+        (await deps.repository.findUserByGoogleId(profile.googleId)) ??
+        (await linkOrCreateGoogleUser(profile, at))
+
+      await deps.repository.recordLogin(user.id, at)
+
+      return toPublicUser(user)
+    },
   }
+
+  async function linkOrCreateGoogleUser(
+    profile: GoogleProfile,
+    at: Date,
+  ): Promise<AuthUser> {
+    const name = googleDisplayName(profile)
+    const existing = await deps.repository.findUserByEmail(profile.email)
+
+    if (existing) {
+      if (existing.googleId && existing.googleId !== profile.googleId) {
+        throw new AppError(
+          409,
+          'GOOGLE_ACCOUNT_CONFLICT',
+          'Esta conta já está vinculada a outra conta Google.',
+        )
+      }
+
+      return deps.repository.linkGoogleAccount({
+        userId: existing.id,
+        googleId: profile.googleId,
+        googleName: name,
+        now: at,
+      })
+    }
+
+    // Tenta "pedro", "pedro2"... Um conflito na inserção (cadastro simultâneo)
+    // leva ao próximo candidato.
+    for (const username of usernameCandidates(
+      usernameBaseFromEmail(profile.email),
+    )) {
+      if (await deps.repository.findUserByUsername(username)) continue
+
+      try {
+        return await deps.repository.createGoogleUser({
+          name,
+          username,
+          email: profile.email,
+          googleId: profile.googleId,
+          avatarUrl: profile.picture,
+          emailVerifiedAt: at,
+        })
+      } catch (error) {
+        if (!(error instanceof DuplicateUserError)) throw error
+
+        // O e-mail ou o Google foram cadastrados ao mesmo tempo em outra
+        // requisição: usa a conta que já existe.
+        const winner =
+          (await deps.repository.findUserByGoogleId(profile.googleId)) ??
+          (await deps.repository.findUserByEmail(profile.email))
+
+        if (winner) return winner
+      }
+    }
+
+    throw new AppError(
+      409,
+      'USERNAME_UNAVAILABLE',
+      'Não foi possível gerar um nome de usuário disponível.',
+    )
+  }
+}
+
+// Nome do perfil do Google, ajustado ao limite de 2 a 100 caracteres.
+function googleDisplayName(profile: GoogleProfile): string {
+  const name = (profile.name ?? '').slice(0, 100).trim()
+
+  if (name.length >= 2) return name
+
+  return usernameBaseFromEmail(profile.email)
 }
 
 export type AuthService = ReturnType<typeof createAuthService>

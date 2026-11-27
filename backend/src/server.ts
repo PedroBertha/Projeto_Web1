@@ -9,9 +9,11 @@ import {
   disconnectDatabase,
   prisma,
 } from './database/prisma.js'
-import { ConsoleMailer } from './mail/mailer.js'
+import { ConsoleMailer, type Mailer } from './mail/mailer.js'
+import { SmtpMailer } from './mail/smtp-mailer.js'
 import { createPrismaAuthRepository } from './modules/auth/auth.repository.js'
 import { createAuthService } from './modules/auth/auth.service.js'
+import { createGoogleOAuthClient } from './modules/auth/google.client.js'
 
 try {
   await checkDatabaseConnection()
@@ -41,13 +43,61 @@ const sessionStore = new PgStore({
   createTableIfMissing: false,
 })
 
+let mailer: Mailer
+
+if (env.SMTP_HOST && env.MAIL_FROM) {
+  const smtp = new SmtpMailer({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_SECURE
+      ? env.SMTP_SECURE === 'true'
+      : env.SMTP_PORT === 465,
+    user: env.SMTP_USER ?? '',
+    pass: env.SMTP_PASS ?? '',
+    from: env.MAIL_FROM,
+  })
+  // Só avisa: o servidor sobe mesmo com o SMTP fora do ar.
+  smtp
+    .verify()
+    .then(() => console.info(`E-mails enviados por SMTP (${env.SMTP_HOST}).`))
+    .catch((error: unknown) => {
+      console.error('Não foi possível conectar ao SMTP. Verifique SMTP_*.')
+      console.error(error)
+    })
+  mailer = smtp
+} else {
+  // Transporte de desenvolvimento: os e-mails aparecem neste terminal.
+  mailer = new ConsoleMailer()
+  console.warn(
+    'SMTP_HOST não definido: os e-mails serão escritos no terminal, sem envio real.',
+  )
+}
+
+const google =
+  env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+    ? createGoogleOAuthClient({
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+        redirectUri: env.GOOGLE_REDIRECT_URI,
+      })
+    : null
+
+if (!google) {
+  console.warn(
+    'GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET não definidos: login com Google desativado.',
+  )
+}
+
 const app = createApp({
-  authService: createAuthService({
-    repository: createPrismaAuthRepository(prisma),
-    // Transporte de desenvolvimento: os e-mails aparecem neste terminal.
-    mailer: new ConsoleMailer(),
+  auth: {
+    service: createAuthService({
+      repository: createPrismaAuthRepository(prisma),
+      mailer,
+      appUrl: env.APP_URL,
+    }),
+    google,
     appUrl: env.APP_URL,
-  }),
+  },
   session: {
     store: sessionStore,
     secret: sessionSecret,

@@ -1,16 +1,19 @@
 import { Router } from 'express'
 import { validateRequest } from '../../middlewares/validation.middleware.js'
-import { createAuthController } from './auth.controller.js'
+import {
+  type AuthControllerDependencies,
+  createAuthController,
+} from './auth.controller.js'
 import {
   confirmEmailSchema,
+  googleCallbackSchema,
   loginSchema,
   registerSchema,
   resendConfirmationSchema,
 } from './auth.schemas.js'
-import type { AuthService } from './auth.service.js'
 
-export function createAuthRouter(service: AuthService): Router {
-  const controller = createAuthController(service)
+export function createAuthRouter(deps: AuthControllerDependencies): Router {
+  const controller = createAuthController(deps)
   const authRouter = Router()
 
   authRouter.post(
@@ -36,6 +39,15 @@ export function createAuthRouter(service: AuthService): Router {
   authRouter.post('/login', validateRequest(loginSchema), controller.login)
   authRouter.post('/logout', controller.logout)
   authRouter.get('/me', controller.me)
+
+  // Cadastro e login com Google: o frontend só cria um link para
+  // /api/auth/google; o callback abre a sessão e volta para o APP_URL.
+  authRouter.get('/google', controller.startGoogle)
+  authRouter.get(
+    '/google/callback',
+    validateRequest(googleCallbackSchema),
+    controller.googleCallback,
+  )
 
   return authRouter
 }
