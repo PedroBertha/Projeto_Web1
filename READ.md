@@ -22,13 +22,13 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 
 - Criar, consultar, editar e excluir projetos.
 - Listar os projetos dos quais o usuário participa.
-- Convidar usuários já cadastrados pelo ID.
+- Convidar pessoas pelo e-mail. Somente quem tem o papel ADMIN no projeto pode convidar.
 - Permitir informar convidados ao criar o projeto, sem exigir integrantes adicionais. O criador será o dono, e os demais só se tornarão membros após aceitar o convite.
-- Consultar e aceitar ou recusar convites dentro do aplicativo.
+- Aceitar ou recusar convites pelos links enviados no e-mail e, futuramente, por notificação no aplicativo.
 - Permitir que o dono do projeto gerencie os membros e as colunas do quadro.
 - Permitir que membros consultem o quadro e trabalhem nas tarefas conforme as permissões individuais concedidas pelo dono.
 
-Não está previsto envio de convites por serviço de e-mail. Os colaboradores serão identificados pelos IDs de suas contas; o aceite ou a recusa acontecerá no aplicativo.
+Os convites são enviados por e-mail, com um link para aceitar e outro para recusar. Recusar exige apenas o token do link. Aceitar exige entrar, ou criar uma conta, com o mesmo e-mail que recebeu o convite. O convite define o papel (ADMIN ou MEMBRO) e, para MEMBRO, as permissões individuais. Convidar é exclusivo de ADMIN, por isso não existe permissão de convite para MEMBRO.
 
 ### Quadro Kanban e tarefas
 
@@ -201,6 +201,24 @@ Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticaç�
 | `DELETE` | `/api/projects/:projectId` | Parâmetro UUID | `DELETE_PROJECT_NOT_IMPLEMENTED` |
 | `GET` | `/api/health` | Sem corpo | Retorna `200` com `{ "status": "ok" }` |
 
+### Rotas de convites
+
+Contratos registrados com resposta `501`. O token dos links tem 43 caracteres em base64url (32 bytes aleatórios); o banco guarda apenas o SHA-256 dele em `token_hash`.
+
+| Método | Caminho | Entrada | Código de erro após validação |
+| --- | --- | --- | --- |
+| `GET` | `/api/projects/:projectId/invitations` | Query `status` opcional (padrão `PENDING`) | `LIST_PROJECT_INVITATIONS_NOT_IMPLEMENTED` |
+| `POST` | `/api/projects/:projectId/invitations` | Corpo: `email`; `role` e `permissions` opcionais | `CREATE_INVITATION_NOT_IMPLEMENTED` |
+| `DELETE` | `/api/projects/:projectId/invitations/:invitationId` | Parâmetros UUID | `REVOKE_INVITATION_NOT_IMPLEMENTED` |
+| `GET` | `/api/invitations/:token` | Token do link | `GET_INVITATION_NOT_IMPLEMENTED` |
+| `POST` | `/api/invitations/:token/accept` | Token do link; exige sessão com o e-mail convidado | `ACCEPT_INVITATION_NOT_IMPLEMENTED` |
+| `POST` | `/api/invitations/:token/decline` | Token do link | `DECLINE_INVITATION_NOT_IMPLEMENTED` |
+
+- As três rotas do projeto são exclusivas de ADMIN.
+- Sem `role`, o convite é para MEMBRO; sem `permissions`, MEMBRO recebe `CREATE_TASKS`, `EDIT_TASKS`, `MOVE_TASKS` e `UPLOAD_ATTACHMENTS`. ADMIN já tem todas as permissões e não aceita a lista.
+- `GET /api/invitations/:token` só consulta, para a página aberta pelo link; aceitar e recusar usam `POST`, porque leitores de e-mail podem abrir links automaticamente.
+- Os convites recebidos pelo usuário logado ficam em `GET /api/users/me/invitations`.
+
 ### Regras de entrada implementadas
 
 - Cadastro: nome entre 2 e 100 caracteres, e-mail válido e senha entre 8 e 128 caracteres.
@@ -215,7 +233,7 @@ Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticaç�
 
 O middleware `validateRequest` valida corpo e parâmetros por meio dos schemas Zod e disponibiliza a entrada normalizada em `res.locals.validated`, com tipagem específica para cada controller. Falhas retornam `400` com código `VALIDATION_ERROR` e mensagem genérica, sem expor valores recebidos ou senhas.
 
-Os IDs em `collaborators` identificam os usuários selecionados para colaborar no projeto. O fluxo de aceite continua previsto: a seleção dará origem a convites pendentes dentro do aplicativo, sem envio de mensagens por serviço de e-mail. A verificação de existência das contas, a criação de convites e a associação do criador ao projeto dependem da implementação futura de autenticação e persistência. Nesta etapa, a API verifica apenas o contrato e continua retornando `501`, sem adicionar membros ou gerar convites. A antiga chave `inviteeEmails` não é aceita.
+Os IDs em `collaborators` identificam os usuários selecionados para colaborar no projeto. O fluxo de aceite continua previsto: a seleção dará origem a convites pendentes dentro do aplicativo, que serão enviados por e-mail como os demais convites. A verificação de existência das contas, a criação de convites e a associação do criador ao projeto dependem da implementação futura de autenticação e persistência. Nesta etapa, a API verifica apenas o contrato e continua retornando `501`, sem adicionar membros ou gerar convites. A antiga chave `inviteeEmails` não é aceita.
 
 ### Exemplos de requisição
 
@@ -311,7 +329,7 @@ A conta existe independentemente de qualquer projeto. A relação entre usuário
 | `User` | Conta independente com ID numérico, nome, e-mail único, hash da senha e datas; modelo já definido, sem role global |
 | `Project` | Dados do projeto |
 | `ProjectMember` | Associação entre usuário e projeto, com titularidade, permissões individuais e unicidade do par usuário/projeto; modelagem futura |
-| `Invitation` | Convite para uma conta existente, com aceite ou recusa no aplicativo |
+| `Invitation` | Convite enviado a um e-mail, com papel e permissões oferecidos e aceite ou recusa pelos links do e-mail |
 
 - O cadastro cria uma conta, sem associá-la obrigatoriamente a um projeto.
 - Criar um projeto associa o usuário autenticado como dono.

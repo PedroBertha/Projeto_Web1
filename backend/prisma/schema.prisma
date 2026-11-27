@@ -19,6 +19,8 @@ enum ProjectRole {
 }
 
 // Permissões de um MEMBER no projeto. ADMIN tem todas, sem consultar a lista.
+// Convidar e gerenciar membros é exclusivo de ADMIN, por isso não há permissão
+// de convite: para alguém convidar, ele precisa ser promovido a ADMIN.
 enum ProjectPermission {
   MANAGE_COLUMNS     // criar, renomear, reordenar e excluir colunas
   CREATE_TASKS
@@ -27,7 +29,6 @@ enum ProjectPermission {
   DELETE_TASKS
   ASSIGN_TASKS       // definir o responsável de qualquer tarefa
   UPLOAD_ATTACHMENTS
-  INVITE_MEMBERS
 
   @@map("project_permission")
 }

@@ -335,7 +335,7 @@ describe('Compatibilidade com a base HTTP', () => {
   })
 
   it('nao transforma caminhos desconhecidos em contratos existentes', async () => {
-    const response = await request(app).get(`${projectPath}/invitations`)
+    const response = await request(app).get(`${projectPath}/members`)
     expect(response.status).toBe(404)
     expect(response.body.error.code).toBe('ROUTE_NOT_FOUND')
   })
