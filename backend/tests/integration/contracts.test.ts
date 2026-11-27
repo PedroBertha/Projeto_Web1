@@ -1,6 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/test-app.js'
 
 type Method = 'get' | 'post' | 'patch' | 'delete'
 type Body = Record<string, unknown> | unknown[]
@@ -9,11 +9,12 @@ const projectId = '550e8400-e29b-41d4-a716-446655440000'
 const projectPath = `/api/projects/${projectId}`
 const registration = {
   name: 'Pedro',
+  username: 'pedro',
   email: 'pedro@example.com',
   password: 'secret-password',
 }
 const credentials = {
-  email: registration.email,
+  login: registration.email,
   password: registration.password,
 }
 
@@ -25,19 +26,6 @@ interface ContractCase {
 }
 
 const contracts: ContractCase[] = [
-  {
-    method: 'post',
-    path: '/api/auth/register',
-    body: registration,
-    code: 'REGISTER_NOT_IMPLEMENTED',
-  },
-  {
-    method: 'post',
-    path: '/api/auth/login',
-    body: credentials,
-    code: 'LOGIN_NOT_IMPLEMENTED',
-  },
-  { method: 'post', path: '/api/auth/logout', code: 'LOGOUT_NOT_IMPLEMENTED' },
   { method: 'get', path: '/api/auth/me', code: 'CURRENT_USER_NOT_IMPLEMENTED' },
   {
     method: 'get',
@@ -89,19 +77,26 @@ interface InvalidBodyCase {
 const invalidRegistrations: InvalidBodyCase[] = [
   { label: 'corpo ausente' },
   { label: 'corpo em array', body: [] },
-  { label: 'nome ausente', body: credentials },
+  {
+    label: 'nome ausente',
+    body: {
+      username: 'pedro',
+      email: registration.email,
+      password: registration.password,
+    },
+  },
   { label: 'nome com tipo incorreto', body: { ...registration, name: 123 } },
   { label: 'nome curto', body: { ...registration, name: 'A' } },
   { label: 'nome somente com espacos', body: { ...registration, name: '   ' } },
   { label: 'nome longo', body: { ...registration, name: 'A'.repeat(101) } },
   {
     label: 'email ausente',
-    body: { name: 'Pedro', password: registration.password },
+    body: { name: 'Pedro', username: 'pedro', password: 'secret-password' },
   },
   { label: 'email invalido', body: { ...registration, email: 'invalid' } },
   {
     label: 'senha ausente',
-    body: { name: 'Pedro', email: registration.email },
+    body: { name: 'Pedro', username: 'pedro', email: registration.email },
   },
   {
     label: 'senha com tipo incorreto',
@@ -113,6 +108,27 @@ const invalidRegistrations: InvalidBodyCase[] = [
     body: { ...registration, password: 'A'.repeat(129) },
   },
   { label: 'campo desconhecido', body: { ...registration, role: 'ADMIN' } },
+  {
+    label: 'username ausente',
+    body: {
+      name: 'Pedro',
+      email: registration.email,
+      password: 'secret-password',
+    },
+  },
+  { label: 'username curto', body: { ...registration, username: 'ab' } },
+  {
+    label: 'username longo',
+    body: { ...registration, username: 'a'.repeat(31) },
+  },
+  {
+    label: 'username com caracteres invalidos',
+    body: { ...registration, username: 'pedro-silva' },
+  },
+  {
+    label: 'username com arroba',
+    body: { ...registration, username: '@pedro' },
+  },
 ]
 
 describe('Validacao de cadastro', () => {
@@ -133,22 +149,34 @@ describe('Validacao de cadastro', () => {
   )
 
   it.each([
-    { name: 'Ab', password: 'A'.repeat(8) },
-    { name: 'A'.repeat(100), password: 'A'.repeat(128) },
-  ])('aceita os limites de tamanho do cadastro', async ({ name, password }) => {
-    const response = await request(app)
-      .post('/api/auth/register')
-      .send({ name, email: registration.email, password })
-    expect(response.status).toBe(501)
-  })
+    { name: 'Ab', username: 'abc', password: 'A'.repeat(8) },
+    {
+      name: 'A'.repeat(100),
+      username: 'a'.repeat(30),
+      password: 'A'.repeat(128),
+    },
+  ])(
+    'aceita os limites de tamanho do cadastro',
+    async ({ name, username, password }) => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ name, username, email: `${username}@example.com`, password })
+      expect(response.status).toBe(201)
+    },
+  )
 })
 
 describe('Validacao de login', () => {
   const cases: InvalidBodyCase[] = [
     { label: 'corpo ausente' },
-    { label: 'email ausente', body: { password: 'secret' } },
-    { label: 'email invalido', body: { ...credentials, email: 'invalid' } },
-    { label: 'senha ausente', body: { email: credentials.email } },
+    { label: 'login ausente', body: { password: 'secret' } },
+    { label: 'login vazio', body: { ...credentials, login: '   ' } },
+    { label: 'login longo', body: { ...credentials, login: 'a'.repeat(255) } },
+    {
+      label: 'chave antiga email',
+      body: { email: registration.email, password: 'secret' },
+    },
+    { label: 'senha ausente', body: { login: credentials.login } },
     { label: 'senha vazia', body: { ...credentials, password: '' } },
     {
       label: 'senha longa',
@@ -169,7 +197,8 @@ describe('Validacao de login', () => {
       const response = await request(app)
         .post('/api/auth/login')
         .send({ ...credentials, password })
-      expect(response.status).toBe(501)
+      expect(response.status).toBe(401)
+      expect(response.body.error.code).toBe('INVALID_CREDENTIALS')
     },
   )
 })

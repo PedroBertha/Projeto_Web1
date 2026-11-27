@@ -13,22 +13,29 @@ describe('Normalizacao dos contratos', () => {
     const input = registerSchema.parse({
       body: {
         name: '  Pedro  ',
+        username: '  Pedro.Silva  ',
         email: '  PEDRO@EXAMPLE.COM  ',
         password: '  password  ',
       },
     })
     expect(input.body).toEqual({
       name: 'Pedro',
+      username: 'pedro.silva',
       email: 'pedro@example.com',
       password: '  password  ',
     })
   })
 
-  it('normaliza email sem remover espacos da senha no login', () => {
-    const input = loginSchema.parse({
-      body: { email: ' USER@EXAMPLE.COM ', password: ' ' },
+  it('normaliza o login (email ou username) sem remover espacos da senha', () => {
+    const byEmail = loginSchema.parse({
+      body: { login: ' USER@EXAMPLE.COM ', password: ' ' },
     })
-    expect(input.body).toEqual({ email: 'user@example.com', password: ' ' })
+    expect(byEmail.body).toEqual({ login: 'user@example.com', password: ' ' })
+
+    const byUsername = loginSchema.parse({
+      body: { login: ' Pedro ', password: 'x' },
+    })
+    expect(byUsername.body).toEqual({ login: 'pedro', password: 'x' })
   })
 
   it('remove espacos externos do nome sem modificar a descricao', () => {

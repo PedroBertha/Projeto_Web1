@@ -8,7 +8,8 @@ Projeto FullStack para a disciplina **Desenvolvimento Web 1**. A proposta é uma
 
 ### Contas e autenticação
 
-- Cadastro, login e logout de usuários.
+- Cadastro, login e logout de usuários. A conta só pode entrar na plataforma depois de confirmar o e-mail pelo link enviado no cadastro.
+- Login com e-mail ou nome de usuário, mais a senha.
 - Uma conta independente por pessoa, com ID numérico e e-mail único em todo o sistema.
 - O cadastro não exige projeto. A mesma conta e o mesmo login permitem participar de vários projetos.
 - A unicidade do e-mail será garantida no banco após a normalização já definida: remoção de espaços externos e conversão para minúsculas.
@@ -186,13 +187,10 @@ Os contratos iniciais de autenticação e projetos estão registrados. Membros, 
 
 ### Endpoints disponíveis nesta etapa
 
-Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticação e projetos validam a entrada quando aplicável e retornam **`501 Not Implemented`**, com mensagem em português e o código indicado. Não criam usuários ou projetos, não verificam credenciais, não consultam existência no banco e não geram cookies de sessão. A proteção com `401` será adicionada junto da autenticação real.
+Todos os caminhos abaixo incluem o prefixo `/api`. As rotas abaixo validam a entrada quando aplicável e retornam **`501 Not Implemented`**, com mensagem em português e o código indicado. Não criam usuários ou projetos, não verificam credenciais, não consultam existência no banco e não geram cookies de sessão. A proteção com `401` será adicionada junto da autenticação real.
 
 | Método | Caminho | Entrada | Código de erro após validação |
 | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | Corpo: `name`, `email`, `password` | `REGISTER_NOT_IMPLEMENTED` |
-| `POST` | `/api/auth/login` | Corpo: `email`, `password` | `LOGIN_NOT_IMPLEMENTED` |
-| `POST` | `/api/auth/logout` | Sem corpo necessário | `LOGOUT_NOT_IMPLEMENTED` |
 | `GET` | `/api/auth/me` | Sem corpo | `CURRENT_USER_NOT_IMPLEMENTED` |
 | `GET` | `/api/projects` | Sem filtros implementados | `LIST_PROJECTS_NOT_IMPLEMENTED` |
 | `POST` | `/api/projects` | Corpo: `name`; `description` e `collaborators` opcionais | `CREATE_PROJECT_NOT_IMPLEMENTED` |
@@ -200,6 +198,26 @@ Todos os caminhos abaixo incluem o prefixo `/api`. As nove rotas de autenticaç�
 | `PATCH` | `/api/projects/:projectId` | Parâmetro UUID; corpo com `name` e/ou `description` | `UPDATE_PROJECT_NOT_IMPLEMENTED` |
 | `DELETE` | `/api/projects/:projectId` | Parâmetro UUID | `DELETE_PROJECT_NOT_IMPLEMENTED` |
 | `GET` | `/api/health` | Sem corpo | Retorna `200` com `{ "status": "ok" }` |
+
+### Cadastro, confirmação de e-mail e login
+
+Rotas implementadas com persistência no PostgreSQL (Prisma) e sessão por cookie gravada na tabela `sessions` (`express-session` com `connect-pg-simple`).
+
+| Método | Caminho | Corpo | Resposta |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | `name`, `username`, `email`, `password` | `201` com `user`; não abre sessão. `409` com `EMAIL_ALREADY_REGISTERED` ou `USERNAME_ALREADY_TAKEN` |
+| `POST` | `/api/auth/confirm-email` | `token` (do link do e-mail) | `200` com `user` e cookie de sessão. `400` com `INVALID_OR_EXPIRED_TOKEN` |
+| `POST` | `/api/auth/resend-confirmation` | `email` | Sempre `202`, sem revelar se o e-mail tem conta |
+| `POST` | `/api/auth/login` | `login` (e-mail ou username), `password` | `200` com `user` e cookie. `401` com `INVALID_CREDENTIALS`; `403` com `EMAIL_NOT_VERIFIED` |
+| `POST` | `/api/auth/logout` | Sem corpo | `204`; encerra a sessão e apaga o cookie |
+
+- A conta só entra na plataforma depois de confirmar o e-mail. O cadastro não cria sessão; ela é aberta na confirmação ou no login, e o login recusa contas não confirmadas com `403`.
+- O aviso de e-mail não confirmado só aparece com a senha correta. Login inexistente e senha errada recebem a mesma resposta `401`.
+- A senha é guardada com Argon2id. A resposta nunca inclui o hash.
+- O link do e-mail aponta para `APP_URL/confirmar-email?token=...`. A página do frontend envia o token por `POST`, porque leitores de e-mail podem abrir links automaticamente. O token tem 43 caracteres em base64url, vale 24 horas e é de uso único; o banco guarda apenas o SHA-256 dele em `user_tokens`. Pedir um novo link invalida os anteriores.
+- O cookie `sid` é `HttpOnly`, `SameSite=Lax`, dura 7 dias (renovados a cada requisição) e é `Secure` em produção. O id da sessão é trocado ao entrar.
+- O envio de e-mail passa pela interface `Mailer` (`src/mail/mailer.ts`). Por enquanto só existe o `ConsoleMailer`, que escreve a mensagem no terminal do servidor; um transporte SMTP pode ser ligado em `src/server.ts` sem mudar o módulo de autenticação. Se o envio falhar, a conta continua criada e o usuário pode pedir um novo link.
+- `GET /api/auth/me` continua retornando `501`.
 
 ### Rotas de convites
 
@@ -221,8 +239,8 @@ Contratos registrados com resposta `501`. O token dos links tem 43 caracteres em
 
 ### Regras de entrada implementadas
 
-- Cadastro: nome entre 2 e 100 caracteres, e-mail válido e senha entre 8 e 128 caracteres.
-- Login: e-mail válido e senha não vazia, com até 128 caracteres; não aplica o mínimo de cadastro a uma tentativa de login.
+- Cadastro: nome entre 2 e 100 caracteres, username de 3 a 30 caracteres (letras minúsculas, números, `_` e `.`, convertido para minúsculas), e-mail válido e senha entre 8 e 128 caracteres.
+- Login: `login` com o e-mail ou o username (sem espaços externos e em minúsculas) e senha não vazia, com até 128 caracteres; não aplica o mínimo de cadastro a uma tentativa de login.
 - Projeto: nome entre 1 e 100 caracteres e descrição opcional com até 2.000 caracteres.
 - Criação de projeto: `collaborators` é um array opcional de IDs numéricos inteiros positivos de usuários, como `[1, 2, 3]`. Omissão ou `[]` permite criar sem colaboradores adicionais; a entrada validada sempre fornece uma lista, usando `[]` quando omitida. IDs duplicados são rejeitados, assim como strings, UUIDs, zero, negativos, frações e valores fora da precisão segura de inteiros do JavaScript. Não há conversão automática de strings para números.
 - Convites só são aceitos no contrato de criação; o PATCH continua restrito a nome e descrição. O dono será obtido da sessão na implementação futura, nunca de um `ownerId` enviado pelo cliente.
@@ -239,20 +257,28 @@ Os IDs em `collaborators` identificam os usuários selecionados para colaborar n
 
 Com a API local em execução, as requisições abaixo demonstram os contratos. Os dados são exemplos; nenhum registro será persistido.
 
-Cadastro com entrada válida — resposta esperada: `501` com `REGISTER_NOT_IMPLEMENTED`:
+Cadastro — resposta esperada: `201`, sem cookie. O link de confirmação aparece no terminal do `npm run dev`:
 
 ```bash
 curl -i http://localhost:3000/api/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Pedro","email":"pedro@example.com","password":"senha-exemplo-123"}'
+  -d '{"name":"Pedro","username":"pedro","email":"pedro@example.com","password":"senha-exemplo-123"}'
 ```
 
-Login com entrada válida — resposta esperada: `501` com `LOGIN_NOT_IMPLEMENTED`:
+Confirmação, com o token copiado do link — resposta esperada: `200` com o cookie `sid`:
 
 ```bash
-curl -i http://localhost:3000/api/auth/login \
+curl -i http://localhost:3000/api/auth/confirm-email \
   -H 'Content-Type: application/json' \
-  -d '{"email":"pedro@example.com","password":"senha-exemplo-123"}'
+  -d '{"token":"TOKEN_DO_LINK"}'
+```
+
+Login por e-mail ou username — resposta esperada: `200` com o cookie `sid` (ou `403` antes da confirmação):
+
+```bash
+curl -i -c cookies.txt http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"login":"pedro","password":"senha-exemplo-123"}'
 ```
 
 Criação de projeto com convidados — resposta esperada: `501` com `CREATE_PROJECT_NOT_IMPLEMENTED`:
@@ -393,7 +419,7 @@ npm run dev
 
 Para parar o banco, use `docker compose stop`; para apagar também os dados, `docker compose down -v`. Se a porta 5432 já estiver ocupada, defina `POSTGRES_PORT` (por exemplo, `POSTGRES_PORT=5433 docker compose up -d`) e ajuste a porta em `DATABASE_URL`. Quem já tem um PostgreSQL instalado pode dispensar o Docker e apenas apontar `DATABASE_URL` para ele.
 
-A conexão do backend fica em `backend/src/database/prisma.ts`, que exporta uma instância única de `PrismaClient` com o adaptador `@prisma/adapter-pg`. Ao iniciar, `npm run dev` e `npm start` executam um `SELECT 1` e encerram com mensagem de erro se o banco não estiver acessível. A API local fica disponível em `http://localhost:3000`; `GET /api/health` continua verificando apenas o processo HTTP, sem consultar o banco. O arquivo `.env` não deve ser versionado.
+A conexão do backend fica em `backend/src/database/prisma.ts`, que exporta uma instância única de `PrismaClient` com o adaptador `@prisma/adapter-pg`. Ao iniciar, `npm run dev` e `npm start` executam um `SELECT 1` e encerram com mensagem de erro se o banco não estiver acessível. A API local fica disponível em `http://localhost:3000`; `GET /api/health` continua verificando apenas o processo HTTP, sem consultar o banco. O arquivo `.env` não deve ser versionado. `SESSION_SECRET` precisa de ao menos 32 caracteres em produção; vazio em desenvolvimento, o servidor gera um segredo temporário e as sessões caem a cada reinício. Gere um com `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `APP_URL` é o endereço do frontend usado nos links de e-mail (padrão `http://localhost:5173`).
 
 | Comando, dentro de `backend/` | Finalidade |
 | --- | --- |
@@ -458,7 +484,7 @@ Também serão verificados manualmente a responsividade, os dois temas, as mensa
 - [x] Definir o modelo `User` e gerar a migração SQL inicial, sem aplicá-la ao banco.
 - [ ] Estruturar o frontend em React com TypeScript.
 - [ ] Implementar o modelo de dados, as migrações e a carga de exemplo.
-- [ ] Implementar cadastro, login, logout e sessões persistentes.
+- [x] Implementar cadastro com confirmação de e-mail, login, logout e sessões persistentes (falta `GET /api/auth/me` e a proteção das rotas privadas).
 - [ ] Implementar validação no servidor e tratamento de erros HTTP.
 - [ ] Implementar projetos, membros e convites.
 - [ ] Implementar colunas personalizáveis e tarefas no Kanban.

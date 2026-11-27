@@ -1,6 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/test-app.js'
 
 describe('Base HTTP da API', () => {
   it('responde ao health check sem expor o framework', async () => {

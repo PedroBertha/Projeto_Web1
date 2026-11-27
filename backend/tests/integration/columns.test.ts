@@ -1,6 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/test-app.js'
 
 type Method = 'get' | 'post' | 'patch' | 'delete'
 type Body = Record<string, unknown> | unknown[]
